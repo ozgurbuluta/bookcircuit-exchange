@@ -1,58 +1,145 @@
 // Database types for TypeScript
-export type Profile = {
+export interface Profile {
   id: string;
   full_name?: string;
-  bio?: string;
-  location?: string;
-  favorite_genre?: string;
-  website?: string;
   avatar_url?: string;
-  created_at: string;
-  updated_at: string;
-};
+  email?: string;
+  location_city?: string;
+  location_state?: string;
+  location_country?: string;
+  location_lat?: number;
+  location_lng?: number;
+  bio?: string;
+  website?: string;
+  university?: string;
+  created_at?: string;
+  updated_at?: string;
+}
 
-export type BookCondition = 'New' | 'Like New' | 'Good' | 'Fair' | 'Poor';
-
-export type Book = {
+export interface Book {
   id: string;
   user_id: string;
   title: string;
-  author?: string;
-  location_text: string;
-  postal_code?: string;
-  lat?: number;
-  lng?: number;
-  condition: BookCondition;
-  cover_img_url?: string;
-  isbn?: string;
+  author: string;
   description?: string;
+  condition: 'New' | 'Like New' | 'Very Good' | 'Good' | 'Acceptable' | 'Poor';
+  isbn?: string;
+  cover_img_url?: string;
+  publisher?: string;
+  publication_year?: number;
+  language?: string;
+  pages?: number;
+  genres?: string[];
+  location_text?: string;
+  location_lat?: number;
+  location_lng?: number;
   created_at: string;
   updated_at: string;
-  // Optional distance fields for geographic searches
-  distance_meters?: number;
-  distance_km?: number;
-  // Optional request-related fields
-  owner?: any; // Profile information of the book owner
-  request_id?: string;
-  request_status?: BookRequestStatus;
-  request_date?: string;
-};
+  owner?: Profile;
+  status?: 'available' | 'requested' | 'trading' | 'completed';
+  current_trade_id?: string;
+  trade_count?: number;
+  interest_count?: number;
+}
 
-export type BookRequestStatus = 'pending' | 'accepted' | 'rejected' | 'completed' | 'cancelled';
+export type BookCondition = Book['condition'];
 
-export type BookRequest = {
+export interface BookRequest {
   id: string;
+  from_user_id: string;
+  to_user_id: string;
   book_id: string;
-  requester_id: string;
-  owner_id: string;
-  status: BookRequestStatus;
-  message?: string;
+  status: 'pending' | 'accepted' | 'rejected' | 'expired';
   created_at: string;
   updated_at: string;
-  // Joined data
+  message?: string;
+  from_user?: Profile;
+  to_user?: Profile;
   book?: Book;
-  requester?: Profile;
-};
+  trade_id?: string;
+}
+
+export interface BookInterest {
+  id: string;
+  user_id: string;
+  book_id: string;
+  created_at: string;
+  updated_at: string;
+  status: 'active' | 'inactive';
+  note?: string;
+  user?: Profile;
+  book?: Book;
+}
+
+export interface Trade {
+  id: string;
+  initiator_id: string;
+  recipient_id: string;
+  status: 'request_pending' | 'pending' | 'accepted' | 'rejected' | 'completed' | 'cancelled';
+  created_at: string;
+  updated_at: string;
+  initiator_message?: string;
+  recipient_message?: string;
+  is_direct_request: boolean;
+  is_counteroffered: boolean;
+  initiator?: Profile;
+  recipient?: Profile;
+  items: TradeItem[];
+}
+
+export interface TradeItem {
+  id: string;
+  trade_id: string;
+  book_id: string;
+  owner_id: string;
+  recipient_id: string;
+  created_at: string;
+  interest_id?: string;
+  item_type: 'book';
+  book?: Book;
+  owner?: Profile;
+  recipient?: Profile;
+}
+
+export interface TradeHistory {
+  id: string;
+  trade_id: string;
+  action: 'created' | 'accepted' | 'rejected' | 'completed' | 'cancelled' | 'counteroffered' | 'updated';
+  actor_id: string;
+  details?: string;
+  created_at: string;
+  actor?: Profile;
+}
+
+export interface Conversation {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  last_message?: string;
+  last_message_at?: string;
+  unread_count?: number;
+  participants: ConversationParticipant[];
+  other_user?: Profile;
+}
+
+export interface ConversationParticipant {
+  user_id: string;
+  conversation_id: string;
+  created_at: string;
+  user?: Profile;
+}
+
+export interface Message {
+  id: string;
+  conversation_id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+  updated_at?: string;
+  user?: Profile;
+  related_book_id?: string;
+  related_book?: Book;
+}
 
 // Blog post type
 export type BlogPost = {

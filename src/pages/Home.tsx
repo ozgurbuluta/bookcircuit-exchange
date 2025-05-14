@@ -331,6 +331,10 @@ const Home = () => {
                       // Refresh data after request
                       form.handleSubmit(onSubmit)();
                     }}
+                    onCancel={() => {
+                      // Refresh data after cancellation
+                      form.handleSubmit(onSubmit)();
+                    }}
                   />
                 ))}
               </div>
@@ -370,6 +374,15 @@ const Home = () => {
                 ownerName={owners[book.user_id] || 'Unknown'}
                 onRequest={() => {
                   // Refresh data after request
+                  const fetchRecentBooks = async () => {
+                    const books = await getRecentlyAddedBooks(8);
+                    setRecentBooks(books);
+                    await fetchOwnerNames(books);
+                  };
+                  fetchRecentBooks();
+                }}
+                onCancel={() => {
+                  // Refresh data after cancellation
                   const fetchRecentBooks = async () => {
                     const books = await getRecentlyAddedBooks(8);
                     setRecentBooks(books);

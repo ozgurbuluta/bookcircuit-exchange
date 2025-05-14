@@ -13,13 +13,24 @@ import { toast } from "@/components/ui/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { RealtimeChannel } from '@supabase/supabase-js';
 
+// Define the possible trade statuses based on the Trade interface in types.ts
+type ActualTradeStatus = 'request_pending' | 'pending' | 'proposed' | 'accepted' | 'rejected' | 'completed' | 'cancelled';
+
+// Define the expected structure for requested books/trades
+interface RequestedItem {
+  book: Book;
+  trade_id: string; 
+  // This status might need refinement based on actual data fetching
+  trade_status: ActualTradeStatus;
+}
+
 const Dashboard = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const [supabaseConnected, setSupabaseConnected] = useState(false);
   const [connectionTested, setConnectionTested] = useState(false);
   const [books, setBooks] = useState<Book[]>([]);
-  const [requestedBooks, setRequestedBooks] = useState<Book[]>([]);
+  const [requestedBooks, setRequestedBooks] = useState<RequestedItem[]>([]); // Use local type
   const [loading, setLoading] = useState(true);
   const [requestedLoading, setRequestedLoading] = useState(true);
   const [cancellingRequestId, setCancellingRequestId] = useState<string | null>(null);
@@ -73,19 +84,62 @@ const Dashboard = () => {
     }
   };
 
-  // Fetch user's requested books
+  // Fetch user's requested books/trades
   const fetchRequestedBooks = async () => {
     if (!user) return;
     
     setRequestedLoading(true);
     try {
-      const bookRequests = await getUserRequestedBooks(user.id);
-      setRequestedBooks(bookRequests);
-    } catch (error) {
-      console.error('Error fetching requested books:', error);
+      // Fetch ALL trades involving the user using the existing function
+      const { data: tradesData, error: tradesError } = await supabase
+        .rpc('get_user_trades', { 
+          p_status_filter: null // Fetch all statuses initially
+        });
+
+      if (tradesError) throw tradesError;
+      
+      // Filter for trades initiated by the user and are in a pending-like state
+      const initiatedPendingTrades = (tradesData || []).filter(trade => 
+        trade.is_initiator && 
+        ['request_pending', 'pending', 'proposed'].includes(trade.status)
+      );
+
+      // Transform the filtered trades into RequestedItem structure
+      const transformedItems: RequestedItem[] = initiatedPendingTrades.flatMap(trade => {
+        // Assuming requested_books contains the book the user initially requested in a direct_request
+        // Or the books the user is asking for in a proposed trade.
+        // We might need to adjust logic based on exact structure of requested_books/offered_books
+        
+        // For simplicity, let's assume the FIRST book in requested_books is the primary one for display
+        // A more robust solution might be needed depending on trade complexity
+        const primaryRequestedBook = trade.requested_books?.[0]; 
+        
+        if (!primaryRequestedBook) return []; // Skip if no requested book found (shouldn't happen for direct_request)
+        
+        return [{
+          // Construct the Book object from the JSONB data
+          book: {
+            id: primaryRequestedBook.id,
+            user_id: primaryRequestedBook.owner_id, // Owner is the recipient in a direct request
+            title: primaryRequestedBook.title,
+            author: primaryRequestedBook.author,
+            condition: primaryRequestedBook.condition,
+            cover_url: primaryRequestedBook.cover_img_url, // Use the correct field name from SQL function
+            // Add other necessary Book fields if available in JSONB
+            created_at: '', // Add placeholder or actual data if available
+            updated_at: '', // Add placeholder or actual data if available
+          },
+          trade_id: trade.id,
+          trade_status: trade.status as ActualTradeStatus, 
+        }];
+      });
+
+      setRequestedBooks(transformedItems);
+    } catch (error: any) {
+      console.error('[Dashboard] Error fetching requested books/trades:', error);
       toast({
         title: "Error",
-        description: "Failed to load your requested books. Please try again later.",
+        description: "Failed to load your requested books/trades. " + (error?.message || ''),
         variant: "destructive"
       });
     } finally {
@@ -100,36 +154,60 @@ const Dashboard = () => {
   };
 
   // Handle cancelling a book request made by the user
-  const handleCancelRequest = async (requestId: string) => {
+  const handleCancelRequest = async (tradeId: string) => {
     if (!user) {
         toast({ title: "Error", description: "You must be logged in.", variant: "destructive" });
         return;
     }
-    if (!requestId) {
-        toast({ title: "Error", description: "Invalid request ID.", variant: "destructive" });
+    if (!tradeId) {
+        toast({ title: "Error", description: "Invalid trade ID.", variant: "destructive" });
         return;
     }
 
-    setCancellingRequestId(requestId);
+    setCancellingRequestId(tradeId);
+    console.log(`[Dashboard] Attempting to cancel trade with ID: ${tradeId}`);
+    
     try {
-      const result = await cancelBookRequest(requestId, user.id);
-
-      if (result.success) {
-        toast({ title: "Success", description: "Book request cancelled." });
+      // Call the new SQL function to update the trade status
+      const { data, error } = await supabase.rpc('update_trade_status', {
+        p_trade_id: tradeId,
+        p_new_status: 'cancelled'
+      });
+      
+      if (error) throw error;
+      
+      console.log('[Dashboard] Trade cancellation response:', data);
+      
+      if (data && data.success) {
+        toast({ 
+          title: "Success", 
+          description: "Trade cancelled successfully."
+        });
         // Remove the cancelled request from the state
-        setRequestedBooks(prev => prev.filter(book => book.request_id !== requestId));
+        setRequestedBooks(prev => prev.filter(item => item.trade_id !== tradeId));
+        
+        // Refresh the requested books list to ensure UI is in sync with database
+        await fetchRequestedBooks();
       } else {
-        toast({ title: "Error", description: result.error || "Failed to cancel request.", variant: "destructive" });
+        toast({ 
+          title: "Error", 
+          description: data?.message || "Failed to cancel trade.", 
+          variant: "destructive" 
+        });
       }
     } catch (error: any) {
-      console.error('Error cancelling request:', error);
-      toast({ title: "Error", description: error?.message || "Failed to cancel request.", variant: "destructive" });
+      console.error('[Dashboard] Error cancelling trade:', error);
+      toast({ 
+        title: "Error", 
+        description: error?.message || "Failed to cancel trade.", 
+        variant: "destructive" 
+      });
     } finally {
       setCancellingRequestId(null);
     }
   };
 
-  // Set up real-time subscription for book requests
+  // Set up real-time subscription for trades involving the user
   const setupRealtimeSubscription = () => {
     if (!user) return;
     
@@ -139,47 +217,67 @@ const Dashboard = () => {
       realtimeSubscriptionRef.current = null;
     }
     
-    console.log('[Dashboard] Setting up real-time subscription for book requests');
+    console.log('[Dashboard] Setting up real-time subscription for trades');
     
-    const channel = supabase
-      .channel('public:book_requests')
-      .on('postgres_changes', {
-        event: 'DELETE', // Listen for deletions
+    // Channel name can be more generic or user-specific
+    const channelName = `user-trades-${user.id}`;
+    const channel = supabase.channel(channelName);
+
+    const commonTradeFilter = `initiator_id=eq.${user.id},recipient_id=eq.${user.id}`; // Listen if user is initiator OR recipient
+
+    channel
+      .on('postgres_changes', { 
+        event: 'INSERT', 
         schema: 'public',
-        table: 'book_requests',
-        filter: `requester_id=eq.${user.id}`, // Only changes to this user's requests
+        table: 'trades',
+        // Filter: listen for inserts where the user is initiator OR recipient
+        filter: commonTradeFilter 
       }, (payload) => {
-        console.log('[Dashboard] Received real-time DELETE event:', payload);
-        // Remove the deleted request from state
-        setRequestedBooks(prev => prev.filter(book => book.request_id !== payload.old.id));
+        console.log('[Dashboard] Received real-time INSERT event for trades:', payload);
+        // A new trade involving the user was created, refresh the list
+        fetchRequestedBooks(); 
+        // Consider more granular update instead of full refetch if performance becomes an issue
       })
-      .on('postgres_changes', {
-        event: 'UPDATE', // Listen for updates (e.g., status changes)
-        schema: 'public',
-        table: 'book_requests',
-        filter: `requester_id=eq.${user.id}`, // Only changes to this user's requests
+      .on('postgres_changes', { 
+        event: 'UPDATE', 
+        schema: 'public', 
+        table: 'trades',
+        // Filter: listen for updates where the user is initiator OR recipient
+        filter: commonTradeFilter 
       }, (payload) => {
-        console.log('[Dashboard] Received real-time UPDATE event:', payload);
-        // Update the status of the modified request
-        setRequestedBooks(prev => prev.map(book => {
-          if (book.request_id === payload.new.id) {
-            return { ...book, request_status: payload.new.status };
+        console.log('[Dashboard] Received real-time UPDATE event for trades:', payload);
+        // Update the status of the modified trade in the state
+        setRequestedBooks(prev => prev.map(item => {
+          if (item.trade_id === payload.new.id) { 
+            // If the updated trade is one we initiated and are displaying,
+            // update its status.
+            return { ...item, trade_status: payload.new.status as ActualTradeStatus };
           }
-          return book;
+          return item;
         }));
-      })
+        // We might also need to ADD an item here if a trade the user *received*
+        // was updated (e.g., accepted) and should now appear in some list (though
+        // this component focuses on *requested* books).
+        // OR trigger a full refetch if state logic gets too complex:
+        // fetchRequestedBooks(); 
+      })      
       .on('postgres_changes', {
-        event: 'INSERT', // Listen for new requests (e.g., if the user adds one on another device)
+        event: 'DELETE', 
         schema: 'public',
-        table: 'book_requests',
-        filter: `requester_id=eq.${user.id}`, // Only changes to this user's requests
+        table: 'trades',
+        // Filter: listen for deletes where the user is initiator OR recipient
+        filter: commonTradeFilter
       }, (payload) => {
-        console.log('[Dashboard] Received real-time INSERT event:', payload);
-        // Instead of pushing incomplete data, refresh the entire list
-        fetchRequestedBooks();
+        console.log('[Dashboard] Received real-time DELETE event for trades:', payload);
+        // Remove the deleted trade from state if it was being displayed
+        setRequestedBooks(prev => prev.filter(item => item.trade_id !== payload.old.id)); 
       })
-      .subscribe((status) => {
-        console.log('[Dashboard] Real-time subscription status:', status);
+      .subscribe((status, err) => {
+        if (err) {
+          console.error('[Dashboard] Real-time subscription error:', err);
+        } else {
+          console.log('[Dashboard] Real-time subscription status:', status);
+        }
       });
     
     realtimeSubscriptionRef.current = channel;
@@ -361,42 +459,63 @@ const Dashboard = () => {
                 </div>
               ) : requestedBooks.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-                  {requestedBooks.map((book) => (
-                    <div key={book.request_id || book.id} className="flex flex-col gap-2">
-                      <div className="relative">
-                        <BookCard 
-                          book={book} 
-                        />
-                        {book.request_status && (
-                          <Badge className="absolute top-2 left-2 bg-blue-500 z-10">
-                            Status: {book.request_status}
+                  {requestedBooks.map((item) => {
+                    const isCancelling = cancellingRequestId === item.trade_id;
+                    
+                    return (
+                      <div key={item.trade_id} className="relative border border-white/10 rounded-lg overflow-hidden bg-white/5 backdrop-blur-sm shadow-md group transition-all hover:shadow-lg">
+                        <BookCard book={item.book} />
+                        <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity p-4 text-center">
+                          <Badge 
+                            variant={item.trade_status === 'accepted' ? 'success' 
+                                   : item.trade_status === 'rejected' || item.trade_status === 'cancelled' ? 'destructive' 
+                                   : 'secondary'}
+                            className="mb-2 capitalize"
+                          >
+                            {item.trade_status.replace('_', ' ')}
                           </Badge>
-                        )}
-                      </div>
-                      <div className="flex justify-end">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex items-center gap-1 h-8 px-3 text-xs text-red-600 border-red-600 hover:bg-red-50 dark:text-red-500 dark:border-red-500 dark:hover:bg-red-900/20"
-                          onClick={() => book.request_id && handleCancelRequest(book.request_id)}
-                          disabled={cancellingRequestId === book.request_id || !book.request_id}
-                          aria-label="Cancel Request"
-                        >
-                          {cancellingRequestId === book.request_id ? (
-                            <>
-                              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1"></div>
-                              Cancelling...
-                            </>
-                          ) : (
-                            <>
-                              <XCircle size={14} />
-                              Cancel
-                            </>
+                          {item.trade_status === 'request_pending' && (
+                            <Button 
+                              size="sm"
+                              className="bg-red-600 hover:bg-red-700 text-white"
+                              onClick={() => handleCancelRequest(item.trade_id)}
+                              disabled={isCancelling}
+                            >
+                              {isCancelling ? 'Cancelling...' : 'Cancel Request'}
+                            </Button>
                           )}
-                        </Button>
+                           {item.trade_status === 'pending' && (
+                            <Button 
+                              size="sm"
+                              className="bg-red-600 hover:bg-red-700 text-white"
+                              onClick={() => handleCancelRequest(item.trade_id)}
+                              disabled={isCancelling}
+                            >
+                              {isCancelling ? 'Cancelling...' : 'Cancel Trade'}
+                            </Button>
+                          )}
+                           {item.trade_status === 'proposed' && (
+                            <Button 
+                              size="sm"
+                              onClick={() => navigate(`/trades/${item.trade_id}`)}
+                              disabled={isCancelling}
+                            >
+                              View Trade
+                            </Button>
+                          )}
+                          {item.trade_status === 'accepted' && (
+                            <Button 
+                              size="sm"
+                              onClick={() => navigate(`/trades/${item.trade_id}`)}
+                              disabled={isCancelling}
+                            >
+                              View Trade Details
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="text-center py-12 bg-muted/30 rounded-xl">

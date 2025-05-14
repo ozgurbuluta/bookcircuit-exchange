@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Menu, X, User, Loader2, MessageCircle } from 'lucide-react';
+import { Menu, X, User, Loader2, MessageCircle, Repeat } from 'lucide-react';
 import Button from './Button';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { TradeNotificationDropdown } from '@/components/trading/TradeNotificationDropdown';
 
 interface UserProfile {
   avatar_url: string | null;
@@ -164,6 +165,10 @@ const Navbar = () => {
                   <MessageCircle className="mr-1 h-4 w-4" />
                   Messages
                 </Link>
+                <Link to="/trades" className="text-book-dark/80 hover:text-book-accent transition-colors flex items-center">
+                  <Repeat className="mr-1 h-4 w-4" />
+                  Trades
+                </Link>
                 <Link to="/blog" className="text-book-dark/80 hover:text-book-accent transition-colors">
                   Blog
                 </Link>
@@ -184,6 +189,7 @@ const Navbar = () => {
                     {user.email?.split('@')[0]}
                   </span>
                 </div>
+                <TradeNotificationDropdown />
                 <Button variant="outline" size="sm" onClick={handleSignOut}>
                   Sign Out
                 </Button>
@@ -264,6 +270,10 @@ const Navbar = () => {
                   <MessageCircle className="mr-2 h-4 w-4" />
                   Messages
                 </Link>
+                <Link to="/trades" className="px-2 py-2 text-book-dark/80 hover:text-book-accent transition-colors flex items-center" onClick={() => setMobileMenuOpen(false)}>
+                  <Repeat className="mr-2 h-4 w-4" />
+                  Trades
+                </Link>
                 <Link to="/blog" className="px-2 py-2 text-book-dark/80 hover:text-book-accent transition-colors" onClick={() => setMobileMenuOpen(false)}>
                   Blog
                 </Link>
@@ -283,6 +293,7 @@ const Navbar = () => {
                     {user.email}
                   </span>
                 </div>
+                <TradeNotificationDropdown />
                 <Button variant="outline" className="w-full" onClick={handleSignOut}>
                   Sign Out
                 </Button>

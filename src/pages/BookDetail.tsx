@@ -10,6 +10,8 @@ import { MessageCircle, ArrowLeft, MapPin, Calendar, BookOpen } from 'lucide-rea
 import Navbar from '@/components/ui-custom/Navbar';
 import Footer from '@/components/ui-custom/Footer';
 import { toast } from '@/components/ui/use-toast';
+import { InterestButton } from '@/components/trading/InterestButton';
+import { RequestBookButton } from '@/components/trading/RequestBookButton';
 
 interface BookDetails {
   id: string;
@@ -27,6 +29,8 @@ interface BookDetails {
     full_name: string;
     avatar_url: string;
   };
+  status?: string;
+  interest_count?: number;
 }
 
 const BookDetail = () => {
@@ -179,6 +183,7 @@ const BookDetail = () => {
                   isOwnBook={user?.id === book.owner.id} 
                   onContactClick={startConversation}
                   loading={startingChat}
+                  book={book}
                 />
               </div>
             </div>
@@ -227,6 +232,7 @@ const BookDetail = () => {
                   isOwnBook={user?.id === book.owner.id} 
                   onContactClick={startConversation}
                   loading={startingChat}
+                  book={book}
                 />
               </div>
             </div>
@@ -245,50 +251,96 @@ interface OwnerCardProps {
   isOwnBook: boolean;
   onContactClick: () => void;
   loading: boolean;
+  book: BookDetails;
 }
 
-const OwnerCard = ({ owner, isOwnBook, onContactClick, loading }: OwnerCardProps) => {
+const OwnerCard = ({ owner, isOwnBook, onContactClick, loading, book }: OwnerCardProps) => {
   if (!owner) return null;
+  
+  // Book is not available for trading or requesting if it's already in a trade
+  const isBookAvailable = !book.status || book.status === 'available';
   
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Book Owner</CardTitle>
+        <CardTitle className="text-lg">Owner Information</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="flex items-center mb-4">
-          <div className="w-12 h-12 rounded-full bg-gray-200 overflow-hidden mr-4">
+          <div className="mr-3 h-12 w-12 overflow-hidden rounded-full bg-gray-200">
             {owner.avatar_url ? (
               <img 
                 src={owner.avatar_url} 
                 alt={owner.full_name} 
-                className="w-full h-full object-cover"
+                className="h-full w-full object-cover"
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center bg-blue-500 text-white">
-                {owner.full_name.charAt(0).toUpperCase()}
+              <div className="h-full w-full flex items-center justify-center bg-primary/10">
+                <span className="text-primary font-medium">
+                  {owner.full_name?.charAt(0).toUpperCase() || 'U'}
+                </span>
               </div>
             )}
           </div>
           <div>
             <h3 className="font-medium">{owner.full_name}</h3>
-            <p className="text-sm text-gray-500">Book owner</p>
+            {isOwnBook && (
+              <p className="text-sm text-muted-foreground">This is your book</p>
+            )}
+            {!isBookAvailable && !isOwnBook && (
+              <p className="text-sm text-amber-600">
+                This book is currently in an active trade
+              </p>
+            )}
           </div>
         </div>
         
-        {isOwnBook ? (
-          <Button variant="outline" disabled className="w-full">
-            This is your book
-          </Button>
-        ) : (
-          <Button 
-            className="w-full" 
-            onClick={onContactClick}
-            disabled={loading}
-          >
-            <MessageCircle className="mr-2 h-4 w-4" />
-            {loading ? 'Starting Chat...' : 'Contact Owner'}
-          </Button>
+        {/* Interest and action buttons */}
+        {!isOwnBook && (
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <InterestButton
+                bookId={book.id}
+                ownerId={book.user_id}
+                className="flex-1"
+              />
+              
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={onContactClick}
+                disabled={loading}
+              >
+                {loading ? (
+                  <span className="flex items-center">
+                    <span className="animate-spin mr-2 h-4 w-4 border-2 border-primary border-r-transparent rounded-full"></span>
+                    Messaging...
+                  </span>
+                ) : (
+                  <span className="flex items-center">
+                    <MessageCircle className="mr-2 h-4 w-4" />
+                    Message
+                  </span>
+                )}
+              </Button>
+            </div>
+            
+            {isBookAvailable && (
+              <RequestBookButton 
+                bookId={book.id}
+                bookTitle={book.title}
+                ownerId={owner.id}
+                fullWidth
+                variant="default"
+                onRequestSent={() => {
+                  toast({
+                    title: "Request Sent",
+                    description: `Your request for "${book.title}" has been sent to ${owner.full_name}.`,
+                  });
+                }}
+              />
+            )}
+          </div>
         )}
       </CardContent>
     </Card>

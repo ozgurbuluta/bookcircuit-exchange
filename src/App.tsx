@@ -22,6 +22,7 @@ import Blog from "./pages/Blog";
 import BlogPost from "./pages/BlogPost";
 import BookDetail from "./pages/BookDetail";
 import Chat from "./pages/Chat";
+import TradesPage from "./pages/TradesPage";
 
 const queryClient = new QueryClient();
 
@@ -70,6 +71,16 @@ const App = () => (
             <Route path="/chat/:conversationId" element={
               <ProtectedRoute>
                 <Chat />
+              </ProtectedRoute>
+            } />
+            <Route path="/trades" element={
+              <ProtectedRoute>
+                <TradesPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/trades/:tradeId" element={
+              <ProtectedRoute>
+                <TradesPage />
               </ProtectedRoute>
             } />
             <Route path="/simple-test" element={<SimpleTest />} />
