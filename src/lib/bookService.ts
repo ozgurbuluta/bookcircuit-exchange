@@ -1,4 +1,4 @@
-import { OpenLibraryBook, OpenLibraryResponse, Book, BookCondition } from './types';
+import { OpenLibraryBook, OpenLibraryResponse, Book, BookCondition, Profile, BookWithRequestDetails } from './types';
 import { supabase } from './supabase';
 
 // Base URL for Open Library API
@@ -263,6 +263,9 @@ export const updateBook = async (
       }
     }
     
+    console.log('[bookService.ts] updateBook - bookId:', bookId);
+    console.log('[bookService.ts] updateBook - processedData:', JSON.stringify(processedData, null, 2));
+
     // Note: location geography column will be automatically updated by the trigger
     // based on lat/lng values
     
@@ -318,18 +321,24 @@ export const searchBooksByParams = async (
   }
 ): Promise<Book[]> => {
   try {
-    // For location-based search, use the books_within_distance RPC function
-    if (params.latitude && params.longitude && params.radius) {
+    // Check if we have text search criteria
+    const hasTextSearch = params.title || params.author;
+    // Check if we have location search criteria
+    const hasLocationSearch = params.latitude && params.longitude && params.radius;
+    
+    if (hasLocationSearch) {
       // Convert radius from km to meters for the query
       const radiusInMeters = params.radius * 1000;
       
       console.log('[bookService] Performing geographic search with params:', {
         search_lat: params.latitude,
         search_lng: params.longitude,
-        max_distance_meters: radiusInMeters
+        max_distance_meters: radiusInMeters,
+        title: params.title,
+        author: params.author
       });
       
-      // Use the correct function name and parameters matching the updated SQL
+      // Use the geographic function to get books within distance
       const { data, error } = await supabase.rpc('books_within_distance', {
         search_lat: params.latitude,
         search_lng: params.longitude,
@@ -338,25 +347,45 @@ export const searchBooksByParams = async (
       
       if (error) {
         console.error('[bookService] Error performing geographic search:', error);
-        
         // Fall back to regular search if geographic search fails
         console.log('[bookService] Falling back to non-geographic search due to error.');
         return fallbackSearch(params);
       } else {
         console.log('[bookService] Geographic search succeeded.');
         
-        // The function now returns books + calculated_distance_meters
-        const results = (Array.isArray(data) ? data : []) as (Book & { calculated_distance_meters: number })[];
+        let results = (Array.isArray(data) ? data : []) as (Book & { calculated_distance_meters: number })[];
+        
+        // If we also have text search criteria, filter the geographic results
+        if (hasTextSearch && results.length > 0) {
+          console.log('[bookService] Applying text filters to geographic results.');
+          results = results.filter(book => {
+            let matchesTitle = true;
+            let matchesAuthor = true;
+            
+            if (params.title) {
+              matchesTitle = book.title?.toLowerCase().includes(params.title.toLowerCase()) || false;
+            }
+            
+            if (params.author) {
+              matchesAuthor = book.author?.toLowerCase().includes(params.author.toLowerCase()) || false;
+            }
+            
+            return matchesTitle && matchesAuthor;
+          });
+          
+          console.log(`[bookService] Text filtering reduced results from ${data.length} to ${results.length}`);
+        }
         
         // Log the results including the distance
-        console.log('[bookService] Returned data:', results.map(r => ({ 
+        console.log('[bookService] Final results:', results.map(r => ({ 
           id: r.id, 
           title: r.title, 
+          author: r.author,
           calculated_distance_meters: r.calculated_distance_meters 
         })));
         
         if (results.length === 0) {
-          console.log('[bookService] Geographic search returned no results.');
+          console.log('[bookService] Combined search returned no results.');
         }
         
         // Results are already sorted by distance by the SQL function
@@ -378,18 +407,25 @@ const fallbackSearch = async (params: {
   title?: string;
   author?: string;
   postal_code?: string;
+  isQuickSearch?: boolean; // New parameter to indicate if this is a quick search
 }): Promise<Book[]> => {
   try {
     // Start building the query
     let query = supabase.from('books').select('*');
 
-    // Apply filters if provided
-    if (params.title) {
-      query = query.ilike('title', `%${params.title}%`);
-    }
-    
-    if (params.author) {
-      query = query.ilike('author', `%${params.author}%`);
+    // For quick search, we want to search both title AND author with OR logic
+    if (params.isQuickSearch && params.title && params.author && params.title === params.author) {
+      // Use OR logic for quick search when searching the same term in both fields
+      query = query.or(`title.ilike.%${params.title}%,author.ilike.%${params.author}%`);
+    } else {
+      // Apply filters individually with AND logic for advanced search
+      if (params.title) {
+        query = query.ilike('title', `%${params.title}%`);
+      }
+      
+      if (params.author) {
+        query = query.ilike('author', `%${params.author}%`);
+      }
     }
     
     if (params.postal_code) {
@@ -546,7 +582,7 @@ export const cancelBookRequest = async (
 };
 
 // Get requested books for a user
-export const getUserRequestedBooks = async (userId: string): Promise<Book[]> => {
+export const getUserRequestedBooks = async (userId: string): Promise<BookWithRequestDetails[]> => {
   try {
     // First get all book requests made by this user
     const { data, error } = await supabase
@@ -583,17 +619,22 @@ export const getUserRequestedBooks = async (userId: string): Promise<Book[]> => 
     
     // Transform the data to get the books with additional request information
     const requestedBooks = data?.map(item => {
-      const book = item.books as unknown as Book;
+      const book = item.books as unknown as BookWithRequestDetails;
       // Add owner information to the book
+      if (book && item.owners && Array.isArray(item.owners) && item.owners.length > 0) {
+        book.owner = item.owners[0] as Profile;
+      } else if (book && item.owners && !Array.isArray(item.owners)) {
+        book.owner = item.owners as Profile;
+      }
+      
+      // Add request information if book exists
       if (book) {
-        book.owner = item.owners;
-        // Add request information
         book.request_id = item.id;
         book.request_status = item.status;
         book.request_date = item.created_at;
       }
       return book;
-    }).filter(Boolean) || [];
+    }).filter(Boolean).filter(book => book !== null && book !== undefined) as BookWithRequestDetails[] || [];
     
     return requestedBooks;
   } catch (error) {
@@ -653,5 +694,23 @@ export const testGeographyColumn = async (): Promise<{ success: boolean; message
       success: false, 
       message: error instanceof Error ? error.message : 'Unknown error occurred' 
     };
+  }
+};
+
+// Add a new function specifically for quick search
+export const quickSearchBooks = async (query: string): Promise<Book[]> => {
+  try {
+    if (!query.trim()) {
+      return [];
+    }
+    
+    return fallbackSearch({
+      title: query.trim(),
+      author: query.trim(),
+      isQuickSearch: true
+    });
+  } catch (error) {
+    console.error('Error in quick search:', error);
+    return [];
   }
 }; 

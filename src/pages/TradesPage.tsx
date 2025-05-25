@@ -62,12 +62,32 @@ export default function TradesPage() {
         });
       
       if (error) throw error;
+
+      // Map the data from the RPC function to the expected TradeDetails format
+      const formattedTrades: TradeDetails[] = (data || []).map(trade => ({
+        id: trade.trade_id,
+        status: trade.status as any,
+        created_at: trade.created_at,
+        updated_at: trade.updated_at,
+        initiator_id: trade.initiator_id,
+        initiator_name: trade.initiator_name,
+        initiator_avatar: trade.initiator_avatar,
+        recipient_id: trade.recipient_id,
+        recipient_name: trade.recipient_name,
+        recipient_avatar: trade.recipient_avatar,
+        initiator_message: trade.notes,
+        recipient_message: '',
+        initiator_items: [], // We'll have to extract these from requested_books/offered_books
+        recipient_items: [], // We'll have to extract these from requested_books/offered_books
+        is_direct_request: trade.trade_type === 'direct_request',
+        is_counteroffered: trade.is_counteroffer || false
+      }));
       
-      setTrades(data || []);
+      setTrades(formattedTrades);
       
       // If a tradeId is provided, select that trade
       if (tradeId) {
-        const foundTrade = (data || []).find(t => t.id === tradeId);
+        const foundTrade = formattedTrades.find(t => t.id === tradeId);
         if (foundTrade) {
           setSelectedTrade(foundTrade);
         } else {
@@ -75,9 +95,9 @@ export default function TradesPage() {
           navigate('/trades');
           toast.error('Trade not found');
         }
-      } else if (data && data.length > 0 && !selectedTrade) {
+      } else if (formattedTrades.length > 0 && !selectedTrade) {
         // Select the first trade by default
-        setSelectedTrade(data[0]);
+        setSelectedTrade(formattedTrades[0]);
       }
       
       if (showRefreshToast) {
@@ -94,7 +114,14 @@ export default function TradesPage() {
   
   // Initial load
   useEffect(() => {
-    fetchTrades();
+    if (user) {
+      fetchTrades();
+    } else {
+      // If no user, and ProtectedRoute somehow allowed rendering,
+      // ensure we are not stuck in a loading state.
+      // This case should ideally be handled by ProtectedRoute.
+      setLoading(false);
+    }
   }, [user]);
   
   // Handle trade selection

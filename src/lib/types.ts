@@ -31,6 +31,7 @@ export interface Book {
   pages?: number;
   genres?: string[];
   location_text?: string;
+  postal_code?: string;
   location_lat?: number;
   location_lng?: number;
   created_at: string;
@@ -40,9 +41,20 @@ export interface Book {
   current_trade_id?: string;
   trade_count?: number;
   interest_count?: number;
+  // Distance properties for geographic search results
+  distance_km?: number;
+  distance_meters?: number;
+  calculated_distance_meters?: number;
 }
 
 export type BookCondition = Book['condition'];
+
+// New type extending Book with request details
+export interface BookWithRequestDetails extends Book {
+  request_id?: string;
+  request_status?: 'pending' | 'accepted' | 'rejected' | 'expired';
+  request_date?: string;
+}
 
 export interface BookRequest {
   id: string;

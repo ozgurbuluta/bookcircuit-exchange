@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, LogOut, CheckCircle2, UserCircle, PlusCircle, Search, MessageSquare, Heart, ShieldCheck, BookCheck, XCircle } from 'lucide-react';
+import { BookOpen, LogOut, CheckCircle2, UserCircle, PlusCircle, Search, MessageSquare, Heart, ShieldCheck, BookCheck, XCircle, Loader2 } from 'lucide-react';
 import Navbar from '@/components/ui-custom/Navbar';
 import Footer from '@/components/ui-custom/Footer';
 import Button from '@/components/ui-custom/Button';
@@ -422,12 +422,13 @@ const Dashboard = () => {
                   <p className="mt-4 text-muted-foreground">Loading your books...</p>
                 </div>
               ) : books.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-                  {books.map((book) => (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                  {books.map(book => (
                     <BookCard 
                       key={book.id} 
                       book={book} 
                       onDelete={handleBookDeleted}
+                      isReadOnly={false}
                     />
                   ))}
                 </div>
@@ -458,64 +459,29 @@ const Dashboard = () => {
                   <p className="mt-4 text-muted-foreground">Loading your requested books...</p>
                 </div>
               ) : requestedBooks.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-                  {requestedBooks.map((item) => {
-                    const isCancelling = cancellingRequestId === item.trade_id;
-                    
-                    return (
-                      <div key={item.trade_id} className="relative border border-white/10 rounded-lg overflow-hidden bg-white/5 backdrop-blur-sm shadow-md group transition-all hover:shadow-lg">
-                        <BookCard book={item.book} />
-                        <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity p-4 text-center">
-                          <Badge 
-                            variant={item.trade_status === 'accepted' ? 'success' 
-                                   : item.trade_status === 'rejected' || item.trade_status === 'cancelled' ? 'destructive' 
-                                   : 'secondary'}
-                            className="mb-2 capitalize"
-                          >
-                            {item.trade_status.replace('_', ' ')}
-                          </Badge>
-                          {item.trade_status === 'request_pending' && (
-                            <Button 
-                              size="sm"
-                              className="bg-red-600 hover:bg-red-700 text-white"
-                              onClick={() => handleCancelRequest(item.trade_id)}
-                              disabled={isCancelling}
-                            >
-                              {isCancelling ? 'Cancelling...' : 'Cancel Request'}
-                            </Button>
-                          )}
-                           {item.trade_status === 'pending' && (
-                            <Button 
-                              size="sm"
-                              className="bg-red-600 hover:bg-red-700 text-white"
-                              onClick={() => handleCancelRequest(item.trade_id)}
-                              disabled={isCancelling}
-                            >
-                              {isCancelling ? 'Cancelling...' : 'Cancel Trade'}
-                            </Button>
-                          )}
-                           {item.trade_status === 'proposed' && (
-                            <Button 
-                              size="sm"
-                              onClick={() => navigate(`/trades/${item.trade_id}`)}
-                              disabled={isCancelling}
-                            >
-                              View Trade
-                            </Button>
-                          )}
-                          {item.trade_status === 'accepted' && (
-                            <Button 
-                              size="sm"
-                              onClick={() => navigate(`/trades/${item.trade_id}`)}
-                              disabled={isCancelling}
-                            >
-                              View Trade Details
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                  {requestedBooks.map(item => (
+                    <div key={item.trade_id} className="flex flex-col gap-2">
+                      <BookCard 
+                        book={item.book} 
+                        isReadOnly={true}
+                      />
+                      <Button 
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleCancelRequest(item.trade_id)}
+                        disabled={cancellingRequestId === item.trade_id}
+                        className="w-full text-red-600 border-red-600 hover:bg-red-50 hover:text-red-700"
+                      >
+                        {cancellingRequestId === item.trade_id ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <XCircle className="mr-2 h-4 w-4" />
+                        )}
+                        Cancel Request
+                      </Button>
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <div className="text-center py-12 bg-muted/30 rounded-xl">

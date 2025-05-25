@@ -44,7 +44,7 @@ const bookFormSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   author: z.string().optional(),
   location_text: z.string().min(1, 'Location is required'),
-  condition: z.enum(['New', 'Like New', 'Good', 'Fair', 'Poor']),
+  condition: z.enum(['New', 'Like New', 'Very Good', 'Good', 'Acceptable', 'Poor']),
   cover_img_url: z.string().optional(),
   isbn: z.string().optional(),
   description: z.string().optional(),
@@ -115,7 +115,7 @@ export default function EditBook() {
         form.reset({
           title: loadedBook.title,
           author: loadedBook.author || '',
-          location_text: loadedBook.location_text,
+          location_text: loadedBook.location_text || '',
           condition: loadedBook.condition,
           cover_img_url: loadedBook.cover_img_url || '',
           isbn: loadedBook.isbn || '',
@@ -126,9 +126,9 @@ export default function EditBook() {
         if (loadedBook.postal_code) {
           setLocationData({
             postalCode: loadedBook.postal_code,
-            formattedAddress: loadedBook.location_text,
-            lat: loadedBook.lat,
-            lng: loadedBook.lng
+            formattedAddress: loadedBook.location_text || '',
+            lat: loadedBook.location_lat,
+            lng: loadedBook.location_lng
           });
         }
         
@@ -264,6 +264,9 @@ export default function EditBook() {
           lng: locationData.lng
         })
       };
+
+      console.log('[EditBook.tsx] onSubmit - id:', id);
+      console.log('[EditBook.tsx] onSubmit - bookData:', JSON.stringify(bookData, null, 2));
       
       const result = await updateBook(id, bookData);
       
@@ -377,7 +380,9 @@ export default function EditBook() {
                           <SelectContent>
                             <SelectItem value="New">New</SelectItem>
                             <SelectItem value="Like New">Like New</SelectItem>
+                            <SelectItem value="Very Good">Very Good</SelectItem>
                             <SelectItem value="Good">Good</SelectItem>
+                            <SelectItem value="Acceptable">Acceptable</SelectItem>
                             <SelectItem value="Fair">Fair</SelectItem>
                             <SelectItem value="Poor">Poor</SelectItem>
                           </SelectContent>

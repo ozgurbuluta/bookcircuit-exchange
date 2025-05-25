@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, BookOpen, MapPin } from 'lucide-react';
+import { Search, BookOpen, MapPin, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { getRecentlyAddedBooks, searchBooksByParams } from '@/lib/bookService';
+import { getRecentlyAddedBooks, searchBooksByParams, quickSearchBooks } from '@/lib/bookService';
 import { Book, LocationData } from '@/lib/types';
 import RequestableBookCard from '@/components/ui-custom/RequestableBookCard';
 import Navbar from '@/components/ui-custom/Navbar';
@@ -78,6 +78,7 @@ const Home = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [owners, setOwners] = useState<Record<string, string>>({});
   const [locationData, setLocationData] = useState<LocationData | null>(null);
+  const [quickSearchQuery, setQuickSearchQuery] = useState<string>('');
 
   // Initialize form
   const form = useForm<SearchFormValues>({
@@ -142,6 +143,35 @@ const Home = () => {
     }
   };
 
+  // Handle quick search
+  const handleQuickSearch = async (query: string) => {
+    if (!query.trim()) {
+      setSearchResults(null);
+      return;
+    }
+    
+    setIsSearching(true);
+    try {
+      // Use the dedicated quick search function
+      const results = await quickSearchBooks(query);
+      
+      setSearchResults(results);
+      
+      // Fetch owner names for search results
+      if (results.length > 0) {
+        await fetchOwnerNames(results);
+      }
+      
+      // Clear the advanced search form when using quick search
+      form.reset();
+      
+    } catch (error) {
+      console.error('Error performing quick search:', error);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
   // Handle search form submission
   const onSubmit = async (values: SearchFormValues) => {
     setIsSearching(true);
@@ -194,12 +224,57 @@ const Home = () => {
       <main className="flex-grow container mx-auto px-4 pt-36 pb-8">
         <h1 className="text-3xl md:text-4xl font-bold font-serif mb-8">Welcome to Turtle Turning Pages</h1>
         
-        {/* Search Form */}
+        {/* Quick Search Bar */}
+        <div className="mb-6">
+          <div className="relative max-w-2xl mx-auto">
+            <Input
+              type="text"
+              placeholder="Quick search by title or author..."
+              value={quickSearchQuery}
+              onChange={(e) => setQuickSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleQuickSearch(quickSearchQuery);
+                }
+              }}
+              className="pl-12 pr-24 py-3 text-lg"
+            />
+            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+            <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex gap-1">
+              {quickSearchQuery && (
+                <Button
+                  onClick={() => {
+                    setQuickSearchQuery('');
+                    setSearchResults(null);
+                  }}
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+              <Button
+                onClick={() => handleQuickSearch(quickSearchQuery)}
+                disabled={isSearching || !quickSearchQuery.trim()}
+                size="sm"
+              >
+                {isSearching ? 'Searching...' : 'Search'}
+              </Button>
+            </div>
+          </div>
+          <p className="text-center text-sm text-muted-foreground mt-2">
+            Search for books by title or author. For location-based search, use the advanced search below.
+          </p>
+        </div>
+        
+        {/* Advanced Search Form */}
         <Card className="mb-10">
           <CardHeader>
-            <CardTitle>Find Books</CardTitle>
+            <CardTitle>Advanced Search</CardTitle>
             <CardDescription>
-              Search for books by title, author, or location
+              Search for books by title, author, or location with distance filtering
             </CardDescription>
           </CardHeader>
           <CardContent>

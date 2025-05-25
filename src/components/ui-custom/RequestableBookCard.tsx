@@ -255,20 +255,26 @@ const RequestableBookCard: React.FC<RequestableBookCardProps> = ({
       
       console.log('[RequestableBookCard] Book request response:', data);
       
-      if (data && data.success) {
+      // If data is not null/undefined, and no error, assume success
+      if (data) { 
+        const tradeId = data as string; // data should be the trade_id (UUID string)
         toast.success('Book requested successfully');
         setIsRequested(true);
-        setJustRequestedId(data.trade_id); // Store the trade ID
+        setJustRequestedId(tradeId); // Store the trade ID
         
         // Clean up any legacy book_requests if they exist
-        await supabase.rpc('cleanup_book_requests', {
+        // Consider moving this to the RPC or ensuring it handles errors gracefully
+        supabase.rpc('cleanup_book_requests', {
           p_book_id: book.id,
           p_user_id: user.id
+        }).then(({ error: cleanupError }) => {
+          if (cleanupError) console.warn('[RequestableBookCard] Legacy request cleanup failed:', cleanupError);
         });
         
-        if (onRequest) onRequest();
+        if (onRequest) onRequest(); // Consider passing tradeId if onRequest needs it
       } else {
-        toast.error(data?.message || 'Failed to request book');
+        // This case might be hit if data is null/undefined even without an error
+        toast.error('Failed to request book: No trade ID returned.');
         setIsRequested(false);
         setJustRequestedId(null);
       }

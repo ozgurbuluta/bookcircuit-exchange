@@ -48,9 +48,9 @@ const ChatHeader = ({ conversation, onBack, bookId }) => {
       
       {/* Avatar or Placeholder */}
       {conversation.avatar ? (
-        <img src={conversation.avatar} alt={conversation.name} className="w-10 h-10 rounded-full mr-4 object-cover" />
+        <img src={conversation.avatar} alt={conversation.name} className="w-10 h-10 rounded-full mr-6 object-cover" />
       ) : (
-        <div className="w-10 h-10 rounded-full bg-book-leather/20 flex items-center justify-center text-book-leather font-medium mr-4">
+        <div className="w-10 h-10 rounded-full bg-book-leather/20 flex items-center justify-center text-book-leather font-medium mr-6">
           {conversation.name ? conversation.name.charAt(0).toUpperCase() : '-'}
         </div>
       )}

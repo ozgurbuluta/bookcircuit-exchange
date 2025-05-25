@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabase'; // Corrected import path
+import { supabase } from '@/lib/supabase';
 import ConversationList from './ConversationList';
 import ChatHeader from './ChatHeader';
 import MessageList from './MessageList';
@@ -7,7 +7,8 @@ import MessageInput from './MessageInput';
 import { MessageCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-const MESSAGES_PER_PAGE = 30; // Define page size
+const INITIAL_MESSAGES_PER_PAGE = 10;
+const OLDER_MESSAGES_PER_PAGE = 20;
 
 /**
  * Main container for the chat feature
@@ -21,15 +22,13 @@ const ChatContainer = ({ userId, selectedConversationId }) => {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [messageLoading, setMessageLoading] = useState(false);
-  const [messagePage, setMessagePage] = useState(0); // State for current message page
-  const [hasMoreMessages, setHasMoreMessages] = useState(true); // State to track if more messages exist
+  const [messagePage, setMessagePage] = useState(0);
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const navigate = useNavigate();
 
-  // Fetch all conversations the user participates in
   useEffect(() => {
     const fetchConversations = async () => {
       if (!userId) return;
-
       setLoading(true);
       try {
         const { data: participations, error: participationsError } = await supabase
@@ -58,143 +57,82 @@ const ChatContainer = ({ userId, selectedConversationId }) => {
           
           if (conversationsError) throw conversationsError;
 
-          // Correctly fetch ALL relevant participants for ALL conversations
-          const { data: participantsData, error: participantsError } = await supabase
+          const { data: participantsData, error: participantsError_2 } = await supabase
             .from('conversation_participants')
-            .select('user_id, conversation_id') // Select both user_id and conversation_id
-            .in('conversation_id', conversationIds); // Use 'in' to fetch for all conversation IDs
-            // We fetch all participants including the current user, and filter later
+            .select('user_id, conversation_id')
+            .in('conversation_id', conversationIds);
           
-          if (participantsError) {
-            console.error(`Error fetching participants for convos ${conversationIds.join(', ')}`, participantsError);
-            return;
-          }
+          if (participantsError_2) throw participantsError_2;
 
           const user = await supabase.auth.getUser().then(res => res.data.user);
-
-          // Map over conversations to enhance them
           const enhancedConversations = await Promise.all(
             conversationsData.map(async (conversation) => {
-              // Filter participants for THIS specific conversation
               const participationsForThisConvo = participantsData.filter(
                 (p) => p.conversation_id === conversation.id
               );
-              // Filter out the current user to find others
               const otherParticipants = participationsForThisConvo.filter(
                 (p) => p.user_id !== user.id
               );
-
               if (otherParticipants.length === 0) {
-                // console.warn(`[ChatContainer] No other participants found for convo ${conversation.id}`);
                 return { ...conversation, name: 'Empty Chat', avatar: null, unreadCount: 0 };
               }
-
-              // Get the ID of the first other participant
               const firstOtherUserId = otherParticipants[0].user_id;
-
-              // 1. Fetch Avatar & Full Name from profiles table
               const { data: profileData, error: profileError } = await supabase
                 .from('profiles')
-                .select('id, avatar_url, full_name') // Select avatar and full name
+                .select('id, avatar_url, full_name')
                 .eq('id', firstOtherUserId)
-                .maybeSingle(); // Use maybeSingle as profile might not exist
-              
-              if (profileError) {
-                console.error(`Error fetching profile for user ${firstOtherUserId}`, profileError);
-                // Continue, but avatar/fallback name might be missing
-              }
-
-              // 2. Call the RPC function to get email
+                .maybeSingle();
               const { data: emailData, error: rpcError } = await supabase.rpc(
-                'get_user_email', // Use the new function name
+                'get_user_email',
                 { user_id_input: firstOtherUserId }
               );
-
-              if (rpcError) {
-                console.error(`Error calling get_user_email RPC for user ${firstOtherUserId}`, rpcError);
-                // Continue, but will use profile full_name as fallback
-              }
-              
-              // Extract email from RPC response (returns array)
               const userEmail = emailData && emailData.length > 0 ? emailData[0]?.email : null;
-              console.log(`[ChatContainer] Fetched for ${firstOtherUserId}:`, { profileData, userEmail }); // Combined log
-
-              // Calculate unread count (logic remains the same)
-              const participation = participationsForThisConvo.find(p => p.conversation_id === conversation.id && p.user_id === user.id);
+              const participation = participations.find(p => p.conversation_id === conversation.id);
               let unreadCount = 0;
               if (participation && participation.last_read_at) {
                 const lastReadDate = new Date(participation.last_read_at);
-                // Count messages AFTER last_read_at NOT sent by the current user
-                const { data: unreadMessagesCount, error: unreadError } = await supabase
+                const { count, error: unreadError } = await supabase
                   .from('messages')
                   .select('id', { count: 'exact', head: true })
                   .eq('conversation_id', conversation.id)
-                  .neq('user_id', user.id) // CORRECTED: use user_id
-                  .gt('created_at', lastReadDate.toISOString()); 
-
-                if (unreadError) {
-                  console.error(`Error fetching unread count for ${conversation.id}:`, unreadError);
-                } else {
-                  unreadCount = unreadMessagesCount || 0; 
-                }
-               } else if (!participation || !participation.last_read_at) {
-                 // If never read, count ALL messages not sent by the user
-                 const { data: totalMessagesCount, error: totalError } = await supabase 
+                  .neq('user_id', user.id)
+                  .gt('created_at', lastReadDate.toISOString());
+                if (!unreadError) unreadCount = count || 0;
+              } else {
+                const { count, error: totalError } = await supabase
                   .from('messages')
                   .select('id', { count: 'exact', head: true })
                   .eq('conversation_id', conversation.id)
-                  .neq('user_id', user.id); // CORRECTED: use user_id
-                  
-                  if (totalError) {
-                     console.error(`Error fetching total unread count for ${conversation.id}:`, totalError);
-                  } else {
-                     unreadCount = totalMessagesCount || 0;
-                  }
-               }
-
-              // Enhance the conversation
-              const enhanced = {
+                  .neq('user_id', user.id);
+                if (!totalError) unreadCount = count || 0;
+              }
+              return {
                 ...conversation,
-                // Use email if available, otherwise fallback to profile full_name, then 'Unknown'
-                name: userEmail || profileData?.full_name || 'Unknown User',
-                // Use avatar_url from profile data
+                name: profileData?.full_name || userEmail || 'Unknown User',
                 avatar: profileData?.avatar_url || null,
                 unreadCount,
-                last_message_sender_id: conversation.last_message_sender_id 
               };
-              console.log(`[ChatContainer] Enhanced conversation ${conversation.id}:`, enhanced);
-              return enhanced;
             })
           );
-
-          // console.log('[ChatContainer] Final Enhanced Conversations:', enhancedConversations);
-
           setConversations(enhancedConversations);
-          
           if (selectedConversationId) {
             const conversation = enhancedConversations.find(c => c.id === selectedConversationId);
-            if (conversation) {
-              setSelectedConversation(conversation);
-            }
-          } 
-          else if (!selectedConversation && enhancedConversations.length > 0) {
+            if (conversation) setSelectedConversation(conversation);
+          } else if (!selectedConversation && enhancedConversations.length > 0) {
             setSelectedConversation(enhancedConversations[0]);
           }
         } else {
           setConversations([]);
         }
       } catch (error) {
-        console.error('[ChatContainer] Error fetching conversations overall:', error);
+        console.error('[ChatContainer] Error fetching conversations:', error);
         setConversations([]);
       } finally {
         setLoading(false);
       }
     };
-
-    if (userId) {
-      fetchConversations();
-      
-      const conversationsSubscription = supabase
+    if (userId) fetchConversations();
+    const conversationsSubscription = supabase
         .channel('public:conversation_participants')
         .on(
           'postgres_changes', 
@@ -204,203 +142,129 @@ const ChatContainer = ({ userId, selectedConversationId }) => {
             table: 'conversation_participants',
             filter: `user_id=eq.${userId}`
           },
-          (payload) => {
-            fetchConversations();
-          }
+          (payload) => { fetchConversations(); }
         )
         .subscribe();
-        
-      return () => {
-        supabase.removeChannel(conversationsSubscription);
-      };
-    }
+    return () => { supabase.removeChannel(conversationsSubscription); };
   }, [userId, selectedConversationId]);
 
-  // --- Function to fetch messages with pagination --- 
   const fetchMessages = useCallback(async (conversationId, page, shouldPrepend = false) => {
     if (!userId || !conversationId) return;
-
     setMessageLoading(true);
     try {
-      const from = page * MESSAGES_PER_PAGE;
-      const to = from + MESSAGES_PER_PAGE - 1;
-
-      console.log(`[ChatContainer] Fetching messages page ${page} (range ${from}-${to}) for convo ${conversationId}`);
-
+      let actualFrom, actualTo;
+      if (shouldPrepend) {
+        actualFrom = INITIAL_MESSAGES_PER_PAGE + (page - 1) * OLDER_MESSAGES_PER_PAGE;
+        actualTo = actualFrom + OLDER_MESSAGES_PER_PAGE - 1;
+      } else {
+        actualFrom = 0;
+        actualTo = INITIAL_MESSAGES_PER_PAGE - 1;
+      }
       const { data: messagesData, error: messagesError } = await supabase
         .from('messages')
         .select('id, content, created_at, user_id, conversation_id')
         .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: false }) // Fetch latest first
-        .range(from, to);
+        .order('created_at', { ascending: false })
+        .range(actualFrom, actualTo);
 
-      if (messagesError) throw messagesError;
-
-      const fetchedMessages = messagesData || [];
-      console.log(`[ChatContainer] Fetched ${fetchedMessages.length} messages.`);
-
-      // Reverse to maintain chronological order in UI
-      const orderedMessages = fetchedMessages.reverse(); 
-
-      setMessages(prev => 
-        shouldPrepend ? [...orderedMessages, ...prev] : orderedMessages
-      );
-      
-      // Update hasMoreMessages based on fetched count
-      setHasMoreMessages(fetchedMessages.length === MESSAGES_PER_PAGE);
-      
-      // If it's the initial fetch (page 0), mark as read
-      if (page === 0) {
-          await supabase
-            .from('conversation_participants')
-            .update({ last_read_at: new Date().toISOString() })
-            .eq('conversation_id', conversationId)
-            .eq('user_id', userId);
+      if (messagesError) {
+        console.error('Error fetching messages:', messagesError);
+        setMessages(prev => shouldPrepend ? prev : []);
+        setHasMoreMessages(false);
+        setMessageLoading(false);
+        return;
       }
-
+      const fetchedMessages = (messagesData || []).reverse();
+      setMessages(prev => shouldPrepend ? [...fetchedMessages, ...prev] : fetchedMessages);
+      setHasMoreMessages(fetchedMessages.length === (shouldPrepend ? OLDER_MESSAGES_PER_PAGE : INITIAL_MESSAGES_PER_PAGE));
+      if (page === 0 && !shouldPrepend) {
+        await supabase
+          .from('conversation_participants')
+          .update({ last_read_at: new Date().toISOString() })
+          .eq('conversation_id', conversationId)
+          .eq('user_id', userId);
+      }
     } catch (error) {
-      console.error(`Error fetching messages page ${page}:`, error);
+      console.error('Error in fetchMessages logic:', error);
     } finally {
       setMessageLoading(false);
     }
-  }, [userId]); // Include dependencies
-  // --- End fetchMessages function --- 
+  }, [userId]);
 
-  // Effect to load initial messages when conversation changes
   useEffect(() => {
     if (selectedConversation) {
-      setMessagePage(0); // Reset page number
-      setHasMoreMessages(true); // Assume there are messages initially
-      setMessages([]); // Clear old messages
-      fetchMessages(selectedConversation.id, 0, false); // Fetch page 0
+      setMessagePage(0);
+      setHasMoreMessages(true);
+      setMessages([]);
+      fetchMessages(selectedConversation.id, 0, false);
     }
-  }, [selectedConversation, fetchMessages]); // Depend on selectedConversation and fetchMessages
+  }, [selectedConversation, fetchMessages]);
 
-  // --- Real-time subscription for new messages --- 
   useEffect(() => {
     if (!selectedConversation) return;
-
     const channel = supabase
       .channel(`messages:${selectedConversation.id}`)
-      .on(
-        'postgres_changes',
-        { 
-          event: 'INSERT', // Only listen for new messages here
-          schema: 'public', 
-          table: 'messages',
-          filter: `conversation_id=eq.${selectedConversation.id}`
-        },
-        (payload) => { 
-          console.log('[Realtime] INSERT received:', payload.new);
-          // Check if message already exists in state (to avoid duplicates if fetch was fast)
-          setMessages(prev => {
-              if (prev.some(msg => msg.id === payload.new.id)) {
-                  return prev; // Already exists, do nothing
-              }
-              // Append the new message to the end
-              return [...prev, payload.new]; 
-          });
-          
-          // Mark as read if message is not from current user
-          if (payload.new.user_id !== userId) {
-            supabase
-              .from('conversation_participants')
-              .update({ last_read_at: new Date().toISOString() })
-              .eq('conversation_id', selectedConversation.id)
-              .eq('user_id', userId);
-          }
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${selectedConversation.id}` }, (payload) => {
+        setMessages(prev => prev.some(msg => msg.id === payload.new.id) ? prev : [...prev, payload.new]);
+        if (payload.new.user_id !== userId) {
+          supabase
+            .from('conversation_participants')
+            .update({ last_read_at: new Date().toISOString() })
+            .eq('conversation_id', selectedConversation.id)
+            .eq('user_id', userId);
         }
-      )
-      // Add handlers for UPDATE/DELETE if needed
+      })
       .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [selectedConversation, userId]);
 
-    return () => {
-      console.log(`[Realtime] Cleaning up subscription for convo: ${selectedConversation?.id}`);
-      supabase.removeChannel(channel);
-    };
-  }, [selectedConversation, userId]); // Depend on selectedConversation and userId
-  // --- End real-time subscription --- 
-
-  // --- Function to load older messages --- 
   const handleLoadOlderMessages = useCallback(() => {
     if (!messageLoading && hasMoreMessages && selectedConversation) {
-      const nextPage = messagePage + 1;
-      setMessagePage(nextPage);
-      fetchMessages(selectedConversation.id, nextPage, true); // Fetch next page and prepend
+      const nextPageForOlder = messagePage + 1;
+      setMessagePage(nextPageForOlder);
+      fetchMessages(selectedConversation.id, nextPageForOlder, true);
     }
   }, [messageLoading, hasMoreMessages, selectedConversation, messagePage, fetchMessages]);
-  // --- End load older messages --- 
 
   const handleSelectConversation = async (conversation) => {
-    // console.log("[ChatContainer] Selecting conversation:", conversation);
-    // Only set the selected conversation. Initial fetch handles messages & marking read.
     if (selectedConversation?.id !== conversation.id) {
       setSelectedConversation(conversation);
     }
-    
-    // Optimistically update UI for unread count immediately
     if (conversation.unreadCount > 0) {
-        setConversations(prevConversations => 
-          prevConversations.map(convo => 
-            convo.id === conversation.id ? { ...convo, unreadCount: 0 } : convo
-          )
-        );
+      setConversations(prevConversations => 
+        prevConversations.map(convo => 
+          convo.id === conversation.id ? { ...convo, unreadCount: 0 } : convo
+        )
+      );
     }
   };
 
   const handleSendMessage = async (messageContent) => {
     if (!selectedConversation || !messageContent.trim() || !userId) return;
-
-    const messageData = {
-      conversation_id: selectedConversation.id,
-      user_id: userId,
-      content: messageContent.trim(),
-    };
-
+    const messageData = { conversation_id: selectedConversation.id, user_id: userId, content: messageContent.trim() };
     try {
-      // Insert new message into the database
-      const { data: insertedMessages, error } = await supabase
-        .from('messages')
-        .insert(messageData)
-        .select(); // Select to get the inserted message back
-
+      const { data: insertedMessages, error } = await supabase.from('messages').insert(messageData).select();
       if (error) throw error;
-      
-      // --- Optimistic UI Update for Conversation List ---
       if (insertedMessages && insertedMessages.length > 0) {
         const newMessage = insertedMessages[0];
         setConversations(prevConversations => {
           const updatedConversationIndex = prevConversations.findIndex(c => c.id === selectedConversation.id);
-          
-          if (updatedConversationIndex === -1) {
-            // Should not happen if conversation is selected, but handle defensively
-            return prevConversations; 
-          }
-
-          // Create the updated conversation object
+          if (updatedConversationIndex === -1) return prevConversations;
           const updatedConversation = {
             ...prevConversations[updatedConversationIndex],
             last_message: newMessage.content,
             last_message_at: newMessage.created_at,
-            last_message_sender_id: userId, // We know the current user sent it
-            // Optionally update unreadCount if needed locally, though depends on read status logic
+            last_message_sender_id: userId,
           };
-          
-          // Remove the old conversation and add the updated one to the top
           const otherConversations = prevConversations.filter(c => c.id !== selectedConversation.id);
           return [updatedConversation, ...otherConversations];
         });
       }
-      // --- End Optimistic Update ---
-
-      // Real-time subscription for messages will handle adding it to the MessageList
-
     } catch (error) {
       console.error('Error sending message:', error);
-      // Consider adding toast notification for error
     }
   };
-
+  
   const startNewConversation = async (otherUserId, initialMessage = null, bookId = null) => {
     try {
       const { data, error } = await supabase
@@ -409,35 +273,22 @@ const ChatContainer = ({ userId, selectedConversationId }) => {
           initial_message: initialMessage,
           book_id: bookId
         });
-        
       if (error) throw error;
-      
       const { data: conversationData, error: conversationError } = await supabase
         .from('conversations')
-        .select('*')
+        .select('*') 
         .eq('id', data)
         .single();
-        
       if (conversationError) throw conversationError;
-      
-      setConversations(prev => {
-        const filtered = prev.filter(c => c.id !== conversationData.id);
-        return [conversationData, ...filtered];
-      });
-      
+      setConversations(prev => [conversationData, ...prev.filter(c => c.id !== conversationData.id)]);
       setSelectedConversation(conversationData);
-      
     } catch (error) {
       console.error('Error starting conversation:', error);
     }
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-[70vh]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <div className="flex items-center justify-center h-[70vh]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
   }
 
   return (
@@ -451,14 +302,10 @@ const ChatContainer = ({ userId, selectedConversationId }) => {
           currentUserId={userId}
         />
       </div>
-
       <div className="w-2/3 flex flex-col bg-white">
         {selectedConversation ? (
           <>
-            <ChatHeader 
-              conversation={selectedConversation} 
-              currentUserId={userId} 
-            />
+            <ChatHeader conversation={selectedConversation} currentUserId={userId} />
             <MessageList 
               messages={messages} 
               currentUserId={userId} 
@@ -466,10 +313,7 @@ const ChatContainer = ({ userId, selectedConversationId }) => {
               hasMore={hasMoreMessages}
               onLoadOlder={handleLoadOlderMessages}
             />
-            <MessageInput 
-              onSendMessage={handleSendMessage} 
-              conversationId={selectedConversation?.id}
-            />
+            <MessageInput onSendMessage={handleSendMessage} conversationId={selectedConversation?.id}/>
           </>
         ) : (
           <div className="flex-grow flex items-center justify-center text-gray-500">

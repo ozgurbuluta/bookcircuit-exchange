@@ -15,6 +15,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from '@/components/ui/textarea';
+import { Book } from '@/lib/types';
 
 interface RequestBookButtonProps {
   bookId: string;
@@ -42,6 +43,7 @@ export const RequestBookButton = ({
   const [loading, setLoading] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [message, setMessage] = useState('');
+  const [isEligible, setIsEligible] = useState<boolean | null>(null);
 
   const isOwnBook = user?.id === ownerId;
 
@@ -57,9 +59,9 @@ export const RequestBookButton = ({
     }
 
     setLoading(true);
+    console.log(`[RequestBookButton] Initiating request. User ID: ${user.id}, Book ID: ${bookId}, Book Owner ID: ${ownerId}`);
+
     try {
-      console.log(`[RequestBookButton] Calling create_direct_request for bookId: ${bookId}`);
-      
       // First check if the book is available
       const { data: bookData, error: bookError } = await supabase
         .from('books')
@@ -77,30 +79,39 @@ export const RequestBookButton = ({
       }
       
       // Proceed with creating the request
-      const { data, error } = await supabase
-        .rpc('create_direct_request', {
-          p_book_id: bookId,
-          p_note: message.trim() || null
-        });
-      
+      console.log(`[RequestBookButton] Calling RPC 'create_direct_request' with params:`, { 
+        p_book_id: bookId
+        // p_initiator_id is inferred from auth.uid() in the SQL function
+        // p_recipient_id is derived from p_book_id in the SQL function
+        // p_note is optional and defaults to NULL in the SQL function
+      });
+      const { data, error } = await supabase.rpc('create_direct_request', {
+        p_book_id: bookId
+        // Removed p_recipient_id as it's not in the SQL function signature from 10_fix_trade_history_columns.sql
+        // p_note: message.trim() || null, // If a message/note feature is to be used, uncomment and implement UI
+      });
+
       console.log(`[RequestBookButton] RPC Response - Data: ${JSON.stringify(data)}, Error: ${JSON.stringify(error)}`);
 
-      if (error) throw error;
-
-      toast.success('Book requested successfully!');
-      setIsDialogOpen(false);
-      
-      if (onRequestSent) {
-        onRequestSent();
+      if (error) {
+        console.error('[RequestBookButton] Error creating direct request:', error);
+        toast.error(error.message || 'Failed to request book');
+      } else if (data) {
+        const tradeId = data as string;
+        toast.success('Book requested successfully!');
+        setIsDialogOpen(false);
+        
+        if (onRequestSent) {
+          onRequestSent();
+        }
+        
+        navigate(`/trades/${tradeId}`);
+      } else {
+        toast.error('An unknown error occurred: No trade ID returned.');
       }
-      
-      // Navigate to trades page
-      navigate('/trades');
     } catch (error: any) {
-      console.error('[RequestBookButton] Error requesting book:', error);
-      // Display more specific error info if available
-      const errorMessage = error?.details || error?.message || 'Failed to request book';
-      toast.error(errorMessage);
+      console.error('[RequestBookButton] Exception during request book:', error);
+      toast.error(error.message || 'An unexpected error occurred.');
     } finally {
       setLoading(false);
     }
