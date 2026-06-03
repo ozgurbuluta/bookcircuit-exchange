@@ -104,6 +104,7 @@ class AppIconButton extends StatelessWidget {
   final VoidCallback onPressed;
   final int? badge;
   final double size;
+  final Color? iconColor;
 
   const AppIconButton({
     super.key,
@@ -111,6 +112,7 @@ class AppIconButton extends StatelessWidget {
     required this.onPressed,
     this.badge,
     this.size = 38,
+    this.iconColor,
   });
 
   @override
@@ -127,7 +129,7 @@ class AppIconButton extends StatelessWidget {
         child: Stack(
           children: [
             Center(
-              child: Icon(icon, size: 21, color: AppColors.ink),
+              child: Icon(icon, size: 21, color: iconColor ?? AppColors.ink),
             ),
             if (badge != null)
               Positioned(

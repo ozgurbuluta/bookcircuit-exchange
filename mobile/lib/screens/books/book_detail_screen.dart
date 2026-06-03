@@ -1,18 +1,178 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../config/theme.dart';
+import '../../config/router.dart';
+import '../../models/book.dart';
 import '../../providers/providers.dart';
 import '../../widgets/widgets.dart';
 
-class BookDetailScreen extends ConsumerWidget {
+class BookDetailScreen extends ConsumerStatefulWidget {
   final String bookId;
 
   const BookDetailScreen({super.key, required this.bookId});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final bookAsync = ref.watch(bookProvider(bookId));
+  ConsumerState<BookDetailScreen> createState() => _BookDetailScreenState();
+}
+
+class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
+  bool _isFavorited = false;
+
+  Future<void> _toggleFavorite() async {
+    HapticFeedback.lightImpact();
+    setState(() => _isFavorited = !_isFavorited);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          _isFavorited ? 'Added to saved books' : 'Removed from saved books',
+          style: AppTypography.sansRegular.copyWith(color: Colors.white),
+        ),
+        backgroundColor: _isFavorited ? AppColors.sage : AppColors.ink2,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  Future<void> _shareBook(Book book) async {
+    await Share.share(
+      '${book.title} by ${book.author} - Available for swap on Turtle Turning Pages!',
+      subject: 'Check out this book',
+    );
+  }
+
+  Future<void> _requestBook(Book book) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.paper,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text(
+          'Request this book?',
+          style: AppTypography.serifSemiBold.copyWith(
+            fontSize: 20,
+            color: AppColors.ink,
+          ),
+        ),
+        content: Text(
+          'This will send a request to ${book.owner?.displayName ?? 'the owner'} to start a trade.',
+          style: AppTypography.sansRegular.copyWith(
+            fontSize: 14,
+            color: AppColors.ink2,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(
+              'Cancel',
+              style: AppTypography.sansSemiBold.copyWith(color: AppColors.ink2),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Send Request'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      // Create trade request
+      final trade = await ref.read(tradeActionsProvider.notifier).createTrade(
+        partnerId: book.userId,
+        myBookIds: [],
+        theirBookIds: [book.id],
+      );
+
+      if (trade != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Request sent to ${book.owner?.displayName ?? 'owner'}',
+              style: AppTypography.sansRegular.copyWith(color: Colors.white),
+            ),
+            backgroundColor: AppColors.sage,
+          ),
+        );
+        context.go(AppRoutes.trades);
+      }
+    }
+  }
+
+  void _showOwnerMenu(Book book) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: AppColors.paper,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.ink.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.edit_outlined, color: AppColors.ink2),
+              title: Text('Edit book', style: AppTypography.sansSemiBold.copyWith(color: AppColors.ink)),
+              onTap: () {
+                Navigator.pop(context);
+                context.push('/edit-book/${book.id}');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: AppColors.rust),
+              title: Text('Delete book', style: AppTypography.sansSemiBold.copyWith(color: AppColors.rust)),
+              onTap: () async {
+                Navigator.pop(context);
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    backgroundColor: AppColors.paper,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                    title: Text('Delete book?', style: AppTypography.serifSemiBold.copyWith(fontSize: 20, color: AppColors.ink)),
+                    content: Text('This action cannot be undone.', style: AppTypography.sansRegular.copyWith(fontSize: 14, color: AppColors.ink2)),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: Text('Cancel', style: AppTypography.sansSemiBold.copyWith(color: AppColors.ink2)),
+                      ),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(backgroundColor: AppColors.rust),
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Delete'),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirmed == true && mounted) {
+                  await ref.read(bookActionsProvider.notifier).deleteBook(book.id);
+                  if (!mounted) return;
+                  context.pop();
+                }
+              },
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bookAsync = ref.watch(bookProvider(widget.bookId));
     final currentUserId = ref.watch(currentUserProvider)?.id;
 
     return Scaffold(
@@ -39,10 +199,25 @@ class BookDetailScreen extends ConsumerWidget {
                         onPressed: () => context.pop(),
                       ),
                       actions: [
+                        if (!isOwner) ...[
+                          AppIconButton(
+                            icon: _isFavorited ? Icons.favorite : Icons.favorite_outline,
+                            iconColor: _isFavorited ? AppColors.rust : null,
+                            onPressed: _toggleFavorite,
+                          ),
+                          const SizedBox(width: 4),
+                        ],
                         AppIconButton(
-                          icon: Icons.favorite_outline,
-                          onPressed: () {},
+                          icon: Icons.share_outlined,
+                          onPressed: () => _shareBook(book),
                         ),
+                        if (isOwner) ...[
+                          const SizedBox(width: 4),
+                          AppIconButton(
+                            icon: Icons.more_vert,
+                            onPressed: () => _showOwnerMenu(book),
+                          ),
+                        ],
                         const SizedBox(width: 8),
                       ],
                       pinned: true,
@@ -135,9 +310,7 @@ class BookDetailScreen extends ConsumerWidget {
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 20),
                           child: GestureDetector(
-                            onTap: () {
-                              // Navigate to chat with owner
-                            },
+                            onTap: () => context.push('/chat/${book.userId}'),
                             child: Container(
                               padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(
@@ -303,7 +476,7 @@ class BookDetailScreen extends ConsumerWidget {
                     children: [
                       Expanded(
                         child: AppButton(
-                          onPressed: () => context.push('/propose-swap/$bookId'),
+                          onPressed: () => context.push('/propose-swap/${widget.bookId}'),
                           isOutlined: true,
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -319,9 +492,7 @@ class BookDetailScreen extends ConsumerWidget {
                       Expanded(
                         flex: 2,
                         child: AppButton(
-                          onPressed: () {
-                            // Request book
-                          },
+                          onPressed: () => _requestBook(book),
                           child: const Text('Request book'),
                         ),
                       ),
