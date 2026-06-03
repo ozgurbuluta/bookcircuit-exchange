@@ -9,6 +9,13 @@ import '../../widgets/widgets.dart';
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
+  Future<void> _onRefresh(WidgetRef ref) async {
+    ref.invalidate(booksProvider);
+    ref.invalidate(pendingTradesCountProvider);
+    // Wait for data to refresh
+    await Future.delayed(const Duration(milliseconds: 500));
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(currentProfileProvider);
@@ -19,8 +26,13 @@ class HomeScreen extends ConsumerWidget {
       backgroundColor: AppColors.paper,
       body: SafeArea(
         bottom: false,
-        child: CustomScrollView(
-          slivers: [
+        child: RefreshIndicator(
+          onRefresh: () => _onRefresh(ref),
+          color: AppColors.rust,
+          backgroundColor: AppColors.paper2,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
             // Header
             SliverToBoxAdapter(
               child: Padding(
@@ -51,20 +63,29 @@ class HomeScreen extends ConsumerWidget {
                         ],
                       ),
                     ),
-                    pendingTrades.when(
-                      data: (count) => AppIconButton(
-                        icon: Icons.notifications_outlined,
-                        badge: count > 0 ? count : null,
-                        onPressed: () => context.go(AppRoutes.trades),
-                      ),
-                      loading: () => AppIconButton(
-                        icon: Icons.notifications_outlined,
-                        onPressed: () => context.go(AppRoutes.trades),
-                      ),
-                      error: (_, __) => AppIconButton(
-                        icon: Icons.notifications_outlined,
-                        onPressed: () => context.go(AppRoutes.trades),
-                      ),
+                    Row(
+                      children: [
+                        pendingTrades.when(
+                          data: (count) => AppIconButton(
+                            icon: Icons.notifications_outlined,
+                            badge: count > 0 ? count : null,
+                            onPressed: () => context.go(AppRoutes.trades),
+                          ),
+                          loading: () => AppIconButton(
+                            icon: Icons.notifications_outlined,
+                            onPressed: () => context.go(AppRoutes.trades),
+                          ),
+                          error: (_, __) => AppIconButton(
+                            icon: Icons.notifications_outlined,
+                            onPressed: () => context.go(AppRoutes.trades),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () => context.go(AppRoutes.profile),
+                          child: UserAvatar(profile: profile, size: 38),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -203,35 +224,92 @@ class HomeScreen extends ConsumerWidget {
 
             // Books carousel
             booksAsync.when(
-              data: (books) => SliverToBoxAdapter(
+              data: (books) => books.isEmpty
+                  ? SliverToBoxAdapter(
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 20),
+                        padding: const EdgeInsets.all(32),
+                        decoration: BoxDecoration(
+                          color: AppColors.paper2,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: AppColors.line, width: 0.5),
+                        ),
+                        child: Column(
+                          children: [
+                            Icon(Icons.menu_book_outlined, size: 48, color: AppColors.ink3.withValues(alpha: 0.5)),
+                            const SizedBox(height: 12),
+                            Text(
+                              'No books nearby yet',
+                              style: AppTypography.serifSemiBold.copyWith(
+                                fontSize: 16,
+                                color: AppColors.ink2,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Be the first to share a book!',
+                              style: AppTypography.sansRegular.copyWith(
+                                fontSize: 13,
+                                color: AppColors.ink3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : SliverToBoxAdapter(
+                      child: SizedBox(
+                        height: 220,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          itemCount: books.take(5).length,
+                          itemBuilder: (context, index) {
+                            final book = books[index];
+                            return Padding(
+                              padding: EdgeInsets.only(right: index < 4 ? 16 : 0),
+                              child: BookCoverCard(
+                                book: book,
+                                onTap: () => context.push('/book/${book.id}'),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+              loading: () => SliverToBoxAdapter(
                 child: SizedBox(
                   height: 220,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    itemCount: books.take(5).length,
-                    itemBuilder: (context, index) {
-                      final book = books[index];
-                      return Padding(
-                        padding: EdgeInsets.only(right: index < 4 ? 16 : 0),
-                        child: BookCoverCard(
-                          book: book,
-                          onTap: () => context.push('/book/${book.id}'),
-                        ),
-                      );
-                    },
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(AppColors.rust),
+                    ),
                   ),
                 ),
               ),
-              loading: () => const SliverToBoxAdapter(
-                child: SizedBox(
-                  height: 220,
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-              ),
               error: (error, _) => SliverToBoxAdapter(
-                child: Center(
-                  child: Text('Error loading books: $error'),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: AppColors.rust.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline, color: AppColors.rust, size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Unable to load books. Pull down to refresh.',
+                          style: AppTypography.sansRegular.copyWith(
+                            fontSize: 13,
+                            color: AppColors.rust2,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -304,6 +382,7 @@ class HomeScreen extends ConsumerWidget {
               ),
             ),
           ],
+        ),
         ),
       ),
     );
