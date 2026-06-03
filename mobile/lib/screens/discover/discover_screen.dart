@@ -14,13 +14,16 @@ class DiscoverScreen extends ConsumerStatefulWidget {
 
 class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
   final _searchController = TextEditingController();
+  final _searchFocusNode = FocusNode();
   String _selectedGenre = 'All';
   double _radius = 5.0;
   bool _isMapView = false;
+  String _sortBy = 'distance';
 
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -32,14 +35,37 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
     );
   }
 
+  void _showFilterSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => _FilterSheet(
+        currentRadius: _radius,
+        currentGenre: _selectedGenre,
+        currentSort: _sortBy,
+        onApply: (radius, genre, sort) {
+          setState(() {
+            _radius = radius;
+            _selectedGenre = genre;
+            _sortBy = sort;
+          });
+          _updateSearch();
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final genres = ref.watch(genresProvider);
     final booksAsync = ref.watch(booksProvider);
 
-    return Scaffold(
-      backgroundColor: AppColors.paper,
-      body: SafeArea(
+    return GestureDetector(
+      onTap: () => _searchFocusNode.unfocus(),
+      child: Scaffold(
+        backgroundColor: AppColors.paper,
+        body: SafeArea(
         bottom: false,
         child: Column(
           children: [
@@ -59,7 +85,7 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
                   ),
                   AppIconButton(
                     icon: Icons.tune,
-                    onPressed: () {},
+                    onPressed: _showFilterSheet,
                   ),
                 ],
               ),
@@ -83,7 +109,10 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
                     Expanded(
                       child: TextField(
                         controller: _searchController,
+                        focusNode: _searchFocusNode,
                         onChanged: (_) => _updateSearch(),
+                        textInputAction: TextInputAction.search,
+                        onSubmitted: (_) => _searchFocusNode.unfocus(),
                         decoration: InputDecoration(
                           hintText: 'Search titles, authors...',
                           hintStyle: AppTypography.sansRegular.copyWith(
@@ -262,6 +291,7 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 
@@ -391,6 +421,254 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _FilterSheet extends StatefulWidget {
+  final double currentRadius;
+  final String currentGenre;
+  final String currentSort;
+  final void Function(double radius, String genre, String sort) onApply;
+
+  const _FilterSheet({
+    required this.currentRadius,
+    required this.currentGenre,
+    required this.currentSort,
+    required this.onApply,
+  });
+
+  @override
+  State<_FilterSheet> createState() => _FilterSheetState();
+}
+
+class _FilterSheetState extends State<_FilterSheet> {
+  late double _radius;
+  late String _genre;
+  late String _sort;
+
+  final _sortOptions = ['distance', 'newest', 'title'];
+  final _genres = ['All', 'Fiction', 'Non-Fiction', 'Mystery', 'Sci-Fi', 'Romance', 'Biography', 'History', 'Self-Help'];
+
+  @override
+  void initState() {
+    super.initState();
+    _radius = widget.currentRadius;
+    _genre = widget.currentGenre;
+    _sort = widget.currentSort;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.paper,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.ink.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Filters',
+                  style: AppTypography.serifSemiBold.copyWith(
+                    fontSize: 22,
+                    color: AppColors.ink,
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _radius = 5.0;
+                      _genre = 'All';
+                      _sort = 'distance';
+                    });
+                  },
+                  child: Text(
+                    'Reset',
+                    style: AppTypography.sansSemiBold.copyWith(
+                      fontSize: 14,
+                      color: AppColors.rust,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Distance
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Distance',
+                      style: AppTypography.sansSemiBold.copyWith(
+                        fontSize: 14,
+                        color: AppColors.ink2,
+                      ),
+                    ),
+                    Text(
+                      '${_radius.toInt()} km',
+                      style: AppTypography.sansBold.copyWith(
+                        fontSize: 14,
+                        color: AppColors.rust,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    activeTrackColor: AppColors.rust,
+                    inactiveTrackColor: AppColors.paper3,
+                    thumbColor: AppColors.paper2,
+                    overlayColor: AppColors.rust.withValues(alpha: 0.2),
+                    trackHeight: 5,
+                    thumbShape: const RoundSliderThumbShape(
+                      enabledThumbRadius: 11,
+                      elevation: 2,
+                    ),
+                  ),
+                  child: Slider(
+                    value: _radius,
+                    min: 1,
+                    max: 100,
+                    onChanged: (value) => setState(() => _radius = value),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Sort by
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Sort by',
+                  style: AppTypography.sansSemiBold.copyWith(
+                    fontSize: 14,
+                    color: AppColors.ink2,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  children: _sortOptions.map((option) {
+                    final isSelected = option == _sort;
+                    final label = option[0].toUpperCase() + option.substring(1);
+                    return GestureDetector(
+                      onTap: () => setState(() => _sort = option),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isSelected ? AppColors.ink : AppColors.paper2,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: isSelected ? AppColors.ink : AppColors.line,
+                            width: 0.5,
+                          ),
+                        ),
+                        child: Text(
+                          label,
+                          style: AppTypography.sansSemiBold.copyWith(
+                            fontSize: 13,
+                            color: isSelected ? AppColors.paper : AppColors.ink2,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+          ),
+
+          // Genre
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Genre',
+                  style: AppTypography.sansSemiBold.copyWith(
+                    fontSize: 14,
+                    color: AppColors.ink2,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _genres.map((genre) {
+                    final isSelected = genre == _genre;
+                    return GestureDetector(
+                      onTap: () => setState(() => _genre = genre),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isSelected ? AppColors.ink : AppColors.paper2,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: isSelected ? AppColors.ink : AppColors.line,
+                            width: 0.5,
+                          ),
+                        ),
+                        child: Text(
+                          genre,
+                          style: AppTypography.sansSemiBold.copyWith(
+                            fontSize: 13,
+                            color: isSelected ? AppColors.paper : AppColors.ink2,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+          ),
+
+          // Apply button
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 28, 20, 34),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  widget.onApply(_radius, _genre, _sort);
+                  Navigator.pop(context);
+                },
+                child: const Text('Apply Filters'),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
