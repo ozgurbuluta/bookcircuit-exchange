@@ -8,6 +8,11 @@ import '../../widgets/widgets.dart';
 class TradesScreen extends ConsumerWidget {
   const TradesScreen({super.key});
 
+  Future<void> _onRefresh(WidgetRef ref) async {
+    ref.invalidate(tradesProvider);
+    await Future.delayed(const Duration(milliseconds: 500));
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final filter = ref.watch(tradeFilterProvider);
@@ -18,7 +23,10 @@ class TradesScreen extends ConsumerWidget {
       backgroundColor: AppColors.paper,
       body: SafeArea(
         bottom: false,
-        child: Column(
+        child: RefreshIndicator(
+          onRefresh: () => _onRefresh(ref),
+          color: AppColors.rust,
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Header
@@ -92,8 +100,15 @@ class TradesScreen extends ConsumerWidget {
             Expanded(
               child: tradesAsync.when(
                 data: (trades) => trades.isEmpty
-                    ? _buildEmptyState()
+                    ? ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: [
+                          SizedBox(height: MediaQuery.of(context).size.height * 0.25),
+                          _buildEmptyState(filter),
+                        ],
+                      )
                     : ListView.builder(
+                        physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.fromLTRB(20, 6, 20, 120),
                         itemCount: trades.length,
                         itemBuilder: (context, index) {
@@ -111,22 +126,53 @@ class TradesScreen extends ConsumerWidget {
             ),
           ],
         ),
+        ),
       ),
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(TradeFilter filter) {
+    String message;
+    String subtitle;
+
+    switch (filter) {
+      case TradeFilter.incoming:
+        message = 'No incoming trades';
+        subtitle = 'Trade requests will appear here';
+      case TradeFilter.outgoing:
+        message = 'No outgoing trades';
+        subtitle = 'Find a book and make an offer!';
+      case TradeFilter.done:
+        message = 'No completed trades';
+        subtitle = 'Your finished trades will appear here';
+      case TradeFilter.all:
+        message = 'No trades yet';
+        subtitle = 'Start trading to see them here';
+    }
+
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.swap_horiz, size: 34, color: AppColors.ink3),
-          const SizedBox(height: 12),
+          Icon(
+            Icons.swap_horiz,
+            size: 48,
+            color: AppColors.ink3.withValues(alpha: 0.5),
+          ),
+          const SizedBox(height: 16),
           Text(
-            'No trades here yet',
+            message,
             style: AppTypography.serifSemiBold.copyWith(
-              fontSize: 17,
+              fontSize: 18,
               color: AppColors.ink2,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            style: AppTypography.sansRegular.copyWith(
+              fontSize: 13.5,
+              color: AppColors.ink3,
             ),
           ),
         ],

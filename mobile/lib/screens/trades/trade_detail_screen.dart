@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../config/theme.dart';
@@ -9,6 +10,45 @@ class TradeDetailScreen extends ConsumerWidget {
   final String tradeId;
 
   const TradeDetailScreen({super.key, required this.tradeId});
+
+  Future<bool> _confirmAction(BuildContext context, String action, String message) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.paper,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text(
+          '$action trade?',
+          style: AppTypography.serifSemiBold.copyWith(fontSize: 20, color: AppColors.ink),
+        ),
+        content: Text(
+          message,
+          style: AppTypography.sansRegular.copyWith(fontSize: 14, color: AppColors.ink2),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Cancel', style: AppTypography.sansSemiBold.copyWith(color: AppColors.ink2)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(action),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
+  void _showSuccessSnackbar(BuildContext context, String message) {
+    HapticFeedback.lightImpact();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: AppTypography.sansRegular.copyWith(color: Colors.white)),
+        backgroundColor: AppColors.sage,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -145,18 +185,55 @@ class TradeDetailScreen extends ConsumerWidget {
                 onAction: (action) async {
                   final notifier = ref.read(tradeActionsProvider.notifier);
                   bool success = false;
+
                   switch (action) {
                     case 'accept':
+                      final confirmed = await _confirmAction(
+                        context,
+                        'Accept',
+                        'You will exchange books with ${partner?.displayName ?? 'them'}.',
+                      );
+                      if (!confirmed) return;
                       success = await notifier.acceptTrade(tradeId);
+                      if (success && context.mounted) {
+                        _showSuccessSnackbar(context, 'Trade accepted!');
+                      }
                       break;
                     case 'reject':
+                      final confirmed = await _confirmAction(
+                        context,
+                        'Decline',
+                        'This will end the trade request.',
+                      );
+                      if (!confirmed) return;
                       success = await notifier.rejectTrade(tradeId);
+                      if (success && context.mounted) {
+                        _showSuccessSnackbar(context, 'Trade declined');
+                      }
                       break;
                     case 'cancel':
+                      final confirmed = await _confirmAction(
+                        context,
+                        'Cancel',
+                        'This will cancel your trade request.',
+                      );
+                      if (!confirmed) return;
                       success = await notifier.cancelTrade(tradeId);
+                      if (success && context.mounted) {
+                        _showSuccessSnackbar(context, 'Trade cancelled');
+                      }
                       break;
                     case 'complete':
+                      final confirmed = await _confirmAction(
+                        context,
+                        'Complete',
+                        'Mark this trade as completed? Make sure the exchange happened.',
+                      );
+                      if (!confirmed) return;
                       success = await notifier.completeTrade(tradeId);
+                      if (success && context.mounted) {
+                        _showSuccessSnackbar(context, 'Trade completed!');
+                      }
                       break;
                     case 'message':
                       if (partner != null) {
