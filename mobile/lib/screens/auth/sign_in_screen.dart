@@ -43,10 +43,12 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
 
-    return Scaffold(
-      backgroundColor: AppColors.paper,
-      body: SafeArea(
-        child: SingleChildScrollView(
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Scaffold(
+        backgroundColor: AppColors.paper,
+        body: SafeArea(
+          child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Form(
             key: _formKey,
@@ -145,6 +147,33 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     return null;
                   },
                 ),
+                const SizedBox(height: 12),
+
+                // Forgot password
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: GestureDetector(
+                    onTap: () {
+                      // TODO: Implement forgot password
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Password reset coming soon',
+                            style: AppTypography.sansRegular.copyWith(color: Colors.white),
+                          ),
+                          backgroundColor: AppColors.ink2,
+                        ),
+                      );
+                    },
+                    child: Text(
+                      'Forgot password?',
+                      style: AppTypography.sansSemiBold.copyWith(
+                        fontSize: 13,
+                        color: AppColors.rust,
+                      ),
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 24),
 
                 // Error message
@@ -203,6 +232,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
           ),
         ),
       ),
+    ),
     );
   }
 }

@@ -46,10 +46,12 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
 
-    return Scaffold(
-      backgroundColor: AppColors.paper,
-      body: SafeArea(
-        child: SingleChildScrollView(
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Scaffold(
+        backgroundColor: AppColors.paper,
+        body: SafeArea(
+          child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Form(
             key: _formKey,
@@ -168,7 +170,15 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 8),
+                Text(
+                  'At least 6 characters',
+                  style: AppTypography.sansRegular.copyWith(
+                    fontSize: 12,
+                    color: AppColors.ink3,
+                  ),
+                ),
+                const SizedBox(height: 20),
 
                 // Error message
                 if (authState.error != null) ...[
@@ -226,6 +236,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
           ),
         ),
       ),
+    ),
     );
   }
 }
