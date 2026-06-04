@@ -6,3 +6,4 @@ export 'condition_badge.dart';
 export 'status_pill.dart';
 export 'avatar.dart';
 export 'section_header.dart';
+export 'tappable.dart';

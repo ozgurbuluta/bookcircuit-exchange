@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -71,6 +72,7 @@ class _MainShellState extends ConsumerState<MainShell> {
 
   void _onTabTapped(int index) {
     if (index == _currentIndex) return;
+    HapticFeedback.selectionClick();
     setState(() => _currentIndex = index);
     context.go(_tabs[index].route);
   }
