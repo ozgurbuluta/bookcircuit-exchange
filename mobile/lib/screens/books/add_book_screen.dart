@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../config/theme.dart';
 import '../../models/book.dart';
 import '../../providers/providers.dart';
@@ -14,11 +17,13 @@ class AddBookScreen extends ConsumerStatefulWidget {
 
 class _AddBookScreenState extends ConsumerState<AddBookScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _imagePicker = ImagePicker();
   final _titleController = TextEditingController();
   final _authorController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _isbnController = TextEditingController();
   BookCondition _condition = BookCondition.good;
+  File? _coverImage;
 
   @override
   void dispose() {
@@ -27,6 +32,102 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
     _descriptionController.dispose();
     _isbnController.dispose();
     super.dispose();
+  }
+
+  void _scanIsbn() {
+    HapticFeedback.lightImpact();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'ISBN scanning coming soon!',
+          style: AppTypography.sansRegular.copyWith(color: Colors.white),
+        ),
+        backgroundColor: AppColors.ink2,
+        action: SnackBarAction(
+          label: 'Enter manually',
+          textColor: AppColors.paper,
+          onPressed: () {
+            // Focus on ISBN field
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickCoverImage() async {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: AppColors.paper,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.ink.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Add book cover',
+                style: AppTypography.serifSemiBold.copyWith(fontSize: 18, color: AppColors.ink),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined, color: AppColors.ink2),
+              title: Text('Take photo', style: AppTypography.sansSemiBold.copyWith(color: AppColors.ink)),
+              onTap: () async {
+                Navigator.pop(context);
+                final picked = await _imagePicker.pickImage(
+                  source: ImageSource.camera,
+                  maxWidth: 600,
+                  maxHeight: 900,
+                  imageQuality: 85,
+                );
+                if (picked != null) {
+                  setState(() => _coverImage = File(picked.path));
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined, color: AppColors.ink2),
+              title: Text('Choose from library', style: AppTypography.sansSemiBold.copyWith(color: AppColors.ink)),
+              onTap: () async {
+                Navigator.pop(context);
+                final picked = await _imagePicker.pickImage(
+                  source: ImageSource.gallery,
+                  maxWidth: 600,
+                  maxHeight: 900,
+                  imageQuality: 85,
+                );
+                if (picked != null) {
+                  setState(() => _coverImage = File(picked.path));
+                }
+              },
+            ),
+            if (_coverImage != null)
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: AppColors.rust),
+                title: Text('Remove photo', style: AppTypography.sansSemiBold.copyWith(color: AppColors.rust)),
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() => _coverImage = null);
+                },
+              ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _save() async {
@@ -95,41 +196,121 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ISBN search (simplified)
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.paper2,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.line, width: 0.5),
+              // Cover image picker
+              Center(
+                child: GestureDetector(
+                  onTap: _pickCoverImage,
+                  child: _coverImage != null
+                      ? Stack(
+                          children: [
+                            Container(
+                              width: 120,
+                              height: 180,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: AppColors.ink.withValues(alpha: 0.15),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                                image: DecorationImage(
+                                  image: FileImage(_coverImage!),
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              top: 8,
+                              right: 8,
+                              child: Container(
+                                width: 28,
+                                height: 28,
+                                decoration: BoxDecoration(
+                                  color: AppColors.rust,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white, width: 2),
+                                ),
+                                child: const Icon(Icons.edit, size: 14, color: Colors.white),
+                              ),
+                            ),
+                          ],
+                        )
+                      : Container(
+                          width: 120,
+                          height: 180,
+                          decoration: BoxDecoration(
+                            color: AppColors.paper2,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppColors.line, width: 1.5, style: BorderStyle.solid),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.add_photo_alternate_outlined, size: 32, color: AppColors.ink3),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Add cover',
+                                style: AppTypography.sansSemiBold.copyWith(
+                                  fontSize: 12,
+                                  color: AppColors.ink3,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                 ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.qr_code_scanner, size: 24, color: AppColors.ink2),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Scan ISBN barcode',
-                            style: AppTypography.sansSemiBold.copyWith(
-                              fontSize: 14,
-                              color: AppColors.ink,
-                            ),
-                          ),
-                          Text(
-                            'Quickly fill in book details',
-                            style: AppTypography.sansRegular.copyWith(
-                              fontSize: 12,
-                              color: AppColors.ink3,
-                            ),
-                          ),
-                        ],
+              ),
+
+              const SizedBox(height: 20),
+
+              // ISBN search
+              GestureDetector(
+                onTap: _scanIsbn,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.paper2,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.line, width: 0.5),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: AppColors.rust.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.qr_code_scanner, size: 22, color: AppColors.rust),
                       ),
-                    ),
-                    Icon(Icons.chevron_right, size: 18, color: AppColors.ink.withValues(alpha: 0.3)),
-                  ],
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Scan ISBN barcode',
+                              style: AppTypography.sansSemiBold.copyWith(
+                                fontSize: 14,
+                                color: AppColors.ink,
+                              ),
+                            ),
+                            Text(
+                              'Quickly fill in book details',
+                              style: AppTypography.sansRegular.copyWith(
+                                fontSize: 12,
+                                color: AppColors.ink3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.chevron_right, size: 18, color: AppColors.ink.withValues(alpha: 0.3)),
+                    ],
+                  ),
                 ),
               ),
 
