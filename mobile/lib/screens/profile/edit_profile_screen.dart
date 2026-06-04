@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../config/theme.dart';
 import '../../providers/providers.dart';
 import '../../widgets/widgets.dart';
@@ -14,10 +16,12 @@ class EditProfileScreen extends ConsumerStatefulWidget {
 
 class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _imagePicker = ImagePicker();
   late TextEditingController _nameController;
   late TextEditingController _bioController;
   late TextEditingController _locationController;
   late TextEditingController _websiteController;
+  File? _selectedImage;
 
   @override
   void initState() {
@@ -36,6 +40,76 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     _locationController.dispose();
     _websiteController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickImage() async {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: AppColors.paper,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.ink.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined, color: AppColors.ink2),
+              title: Text('Take photo', style: AppTypography.sansSemiBold.copyWith(color: AppColors.ink)),
+              onTap: () async {
+                Navigator.pop(context);
+                final picked = await _imagePicker.pickImage(
+                  source: ImageSource.camera,
+                  maxWidth: 512,
+                  maxHeight: 512,
+                  imageQuality: 85,
+                );
+                if (picked != null) {
+                  setState(() => _selectedImage = File(picked.path));
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined, color: AppColors.ink2),
+              title: Text('Choose from library', style: AppTypography.sansSemiBold.copyWith(color: AppColors.ink)),
+              onTap: () async {
+                Navigator.pop(context);
+                final picked = await _imagePicker.pickImage(
+                  source: ImageSource.gallery,
+                  maxWidth: 512,
+                  maxHeight: 512,
+                  imageQuality: 85,
+                );
+                if (picked != null) {
+                  setState(() => _selectedImage = File(picked.path));
+                }
+              },
+            ),
+            if (_selectedImage != null || ref.read(currentProfileProvider)?.avatarUrl != null)
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: AppColors.rust),
+                title: Text('Remove photo', style: AppTypography.sansSemiBold.copyWith(color: AppColors.rust)),
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() => _selectedImage = null);
+                  // TODO: Also mark for removal on save
+                },
+              ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _save() async {
@@ -94,31 +168,50 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
           child: Column(
             children: [
               // Avatar
-              Stack(
-                children: [
-                  UserAvatar(profile: profile, size: 84),
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: Container(
-                      width: 30,
-                      height: 30,
-                      decoration: BoxDecoration(
-                        color: AppColors.rust,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: AppColors.paper, width: 2.5),
+              GestureDetector(
+                onTap: _pickImage,
+                child: Stack(
+                  children: [
+                    if (_selectedImage != null)
+                      Container(
+                        width: 84,
+                        height: 84,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          image: DecorationImage(
+                            image: FileImage(_selectedImage!),
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      )
+                    else
+                      UserAvatar(profile: profile, size: 84),
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: Container(
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          color: AppColors.rust,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppColors.paper, width: 2.5),
+                        ),
+                        child: const Icon(Icons.camera_alt, size: 16, color: Colors.white),
                       ),
-                      child: const Icon(Icons.camera_alt, size: 16, color: Colors.white),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               const SizedBox(height: 8),
-              Text(
-                'Change photo',
-                style: AppTypography.sansSemiBold.copyWith(
-                  fontSize: 13.5,
-                  color: AppColors.rust,
+              GestureDetector(
+                onTap: _pickImage,
+                child: Text(
+                  'Change photo',
+                  style: AppTypography.sansSemiBold.copyWith(
+                    fontSize: 13.5,
+                    color: AppColors.rust,
+                  ),
                 ),
               ),
 
