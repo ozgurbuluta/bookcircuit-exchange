@@ -9,6 +9,11 @@ import '../../widgets/widgets.dart';
 class MessagesScreen extends ConsumerWidget {
   const MessagesScreen({super.key});
 
+  Future<void> _onRefresh(WidgetRef ref) async {
+    ref.invalidate(conversationsProvider);
+    await Future.delayed(const Duration(milliseconds: 500));
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final conversationsAsync = ref.watch(conversationsProvider);
@@ -17,7 +22,10 @@ class MessagesScreen extends ConsumerWidget {
       backgroundColor: AppColors.paper,
       body: SafeArea(
         bottom: false,
-        child: Column(
+        child: RefreshIndicator(
+          onRefresh: () => _onRefresh(ref),
+          color: AppColors.rust,
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Header
@@ -46,8 +54,15 @@ class MessagesScreen extends ConsumerWidget {
             Expanded(
               child: conversationsAsync.when(
                 data: (conversations) => conversations.isEmpty
-                    ? _buildEmptyState()
+                    ? ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: [
+                          SizedBox(height: MediaQuery.of(context).size.height * 0.25),
+                          _buildEmptyState(),
+                        ],
+                      )
                     : ListView.builder(
+                        physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
                         itemCount: conversations.length,
                         itemBuilder: (context, index) {
@@ -63,6 +78,7 @@ class MessagesScreen extends ConsumerWidget {
               ),
             ),
           ],
+        ),
         ),
       ),
     );

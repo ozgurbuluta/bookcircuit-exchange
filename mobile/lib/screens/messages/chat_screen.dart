@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:timeago/timeago.dart' as timeago;
 import '../../config/theme.dart';
 import '../../providers/providers.dart';
 import '../../widgets/widgets.dart';
@@ -24,9 +25,24 @@ class ChatScreen extends ConsumerStatefulWidget {
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
+  bool _hasText = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _messageController.addListener(_onTextChanged);
+  }
+
+  void _onTextChanged() {
+    final hasText = _messageController.text.trim().isNotEmpty;
+    if (hasText != _hasText) {
+      setState(() => _hasText = hasText);
+    }
+  }
 
   @override
   void dispose() {
+    _messageController.removeListener(_onTextChanged);
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -162,19 +178,48 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           Expanded(
             child: chatState.isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(16),
-                    itemCount: chatState.messages.length,
-                    itemBuilder: (context, index) {
-                      final message = chatState.messages[index];
-                      final isMe = message.userId == currentUserId;
-                      return _MessageBubble(
-                        message: message,
-                        isMe: isMe,
-                      );
-                    },
-                  ),
+                : chatState.messages.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.chat_bubble_outline,
+                              size: 48,
+                              color: AppColors.ink3.withValues(alpha: 0.5),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Start a conversation',
+                              style: AppTypography.serifSemiBold.copyWith(
+                                fontSize: 16,
+                                color: AppColors.ink2,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Say hello to get the trade started!',
+                              style: AppTypography.sansRegular.copyWith(
+                                fontSize: 13,
+                                color: AppColors.ink3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.all(16),
+                        itemCount: chatState.messages.length,
+                        itemBuilder: (context, index) {
+                          final message = chatState.messages[index];
+                          final isMe = message.userId == currentUserId;
+                          return _MessageBubble(
+                            message: message,
+                            isMe: isMe,
+                          );
+                        },
+                      ),
           ),
 
           // Input bar
@@ -229,22 +274,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             ),
                           ),
                           GestureDetector(
-                            onTap: _sendMessage,
-                            child: Container(
+                            onTap: _hasText ? _sendMessage : null,
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 150),
                               width: 30,
                               height: 30,
                               decoration: BoxDecoration(
-                                color: _messageController.text.trim().isNotEmpty
-                                    ? AppColors.rust
-                                    : AppColors.paper3,
+                                color: _hasText ? AppColors.rust : AppColors.paper3,
                                 shape: BoxShape.circle,
                               ),
                               child: Icon(
                                 Icons.send,
                                 size: 16,
-                                color: _messageController.text.trim().isNotEmpty
-                                    ? Colors.white
-                                    : AppColors.ink3,
+                                color: _hasText ? Colors.white : AppColors.ink3,
                               ),
                             ),
                           ),
@@ -270,48 +312,69 @@ class _MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final timestamp = message.createdAt != null
+        ? timeago.format(message.createdAt, locale: 'en_short')
+        : '';
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Align(
-        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-        child: Container(
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.76,
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            gradient: isMe
-                ? const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [AppColors.rust, Color(0xFF9A3F22)],
-                  )
-                : null,
-            color: isMe ? null : AppColors.paper2,
-            borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(18),
-              topRight: const Radius.circular(18),
-              bottomLeft: Radius.circular(isMe ? 18 : 5),
-              bottomRight: Radius.circular(isMe ? 5 : 18),
+      child: Column(
+        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          Container(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.76,
             ),
-            border: isMe ? null : Border.all(color: AppColors.line, width: 0.5),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.ink.withValues(alpha: 0.06),
-                blurRadius: 2,
-                offset: const Offset(0, 1),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              gradient: isMe
+                  ? const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [AppColors.rust, Color(0xFF9A3F22)],
+                    )
+                  : null,
+              color: isMe ? null : AppColors.paper2,
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(18),
+                topRight: const Radius.circular(18),
+                bottomLeft: Radius.circular(isMe ? 18 : 5),
+                bottomRight: Radius.circular(isMe ? 5 : 18),
               ),
-            ],
-          ),
-          child: Text(
-            message.content,
-            style: AppTypography.sansRegular.copyWith(
-              fontSize: 14.5,
-              height: 1.4,
-              color: isMe ? AppColors.paper2 : AppColors.ink,
+              border: isMe ? null : Border.all(color: AppColors.line, width: 0.5),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.ink.withValues(alpha: 0.06),
+                  blurRadius: 2,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
+            child: Text(
+              message.content,
+              style: AppTypography.sansRegular.copyWith(
+                fontSize: 14.5,
+                height: 1.4,
+                color: isMe ? AppColors.paper2 : AppColors.ink,
+              ),
             ),
           ),
-        ),
+          if (timestamp.isNotEmpty)
+            Padding(
+              padding: EdgeInsets.only(
+                top: 4,
+                left: isMe ? 0 : 4,
+                right: isMe ? 4 : 0,
+              ),
+              child: Text(
+                timestamp,
+                style: AppTypography.sansRegular.copyWith(
+                  fontSize: 10.5,
+                  color: AppColors.ink3,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
