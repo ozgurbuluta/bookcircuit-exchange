@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 
 import Navbar from '../components/ui-custom/Navbar';
 import Footer from '../components/ui-custom/Footer';
-import { supabase } from '../lib/supabase';
+import { useAuth } from '@/context/AuthContext';
 import { searchBooks, formatBookData, addBook } from '../lib/bookService';
 import { BookCondition, OpenLibraryBook, LocationData } from '../lib/types';
 
@@ -57,7 +57,7 @@ type BookFormValues = z.infer<typeof bookFormSchema>;
 
 export default function AddBook() {
   const navigate = useNavigate();
-  const [user, setUser] = useState<any>(null);
+  const { user, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<OpenLibraryBook[]>([]);
@@ -83,16 +83,10 @@ export default function AddBook() {
 
   // Check if user is authenticated
   useEffect(() => {
-    const getUser = async () => {
-      const { data } = await supabase.auth.getUser();
-      if (data?.user) {
-        setUser(data.user);
-      } else {
-        navigate('/signin');
-      }
-    };
-    getUser();
-  }, [navigate]);
+    if (!authLoading && !user) {
+      navigate('/signin');
+    }
+  }, [user, authLoading, navigate]);
 
   // Handle book search
   const handleSearch = async () => {
@@ -255,7 +249,7 @@ export default function AddBook() {
         })
       };
       
-      const result = await addBook(user.id, bookData);
+      const result = await addBook(user.uid, bookData);
       
       if (result.success) {
         toast.success('Book added successfully!');
