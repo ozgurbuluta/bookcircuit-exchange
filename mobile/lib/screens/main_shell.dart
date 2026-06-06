@@ -3,11 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/theme.dart';
 import '../config/router.dart';
 import '../providers/providers.dart';
-import '../services/supabase_service.dart';
 
 class MainShell extends ConsumerStatefulWidget {
   final Widget child;
@@ -20,7 +18,6 @@ class MainShell extends ConsumerStatefulWidget {
 
 class _MainShellState extends ConsumerState<MainShell> {
   int _currentIndex = 0;
-  RealtimeChannel? _tradesChannel;
 
   static const _tabs = [
     _TabItem(route: AppRoutes.home, icon: Icons.home_outlined, activeIcon: Icons.home, label: 'Home'),
@@ -29,32 +26,6 @@ class _MainShellState extends ConsumerState<MainShell> {
     _TabItem(route: AppRoutes.messages, icon: Icons.chat_bubble_outline, activeIcon: Icons.chat_bubble, label: 'Messages'),
     _TabItem(route: AppRoutes.profile, icon: Icons.person_outline, activeIcon: Icons.person, label: 'Profile'),
   ];
-
-  @override
-  void initState() {
-    super.initState();
-    _setupRealtimeSubscriptions();
-  }
-
-  @override
-  void dispose() {
-    _tradesChannel?.unsubscribe();
-    super.dispose();
-  }
-
-  void _setupRealtimeSubscriptions() {
-    // Subscribe to trade updates for real-time badge updates
-    try {
-      _tradesChannel = SupabaseService.subscribeToTrades((trade) {
-        // Invalidate providers to refresh badge counts
-        ref.invalidate(pendingTradesCountProvider);
-        ref.invalidate(tradesProvider);
-      });
-    } catch (e) {
-      // Subscription failed, will rely on pull-to-refresh
-      debugPrint('Failed to setup realtime trades subscription: $e');
-    }
-  }
 
   @override
   void didChangeDependencies() {
