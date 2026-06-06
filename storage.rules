@@ -1,0 +1,41 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidImage() {
+      return request.resource.contentType.matches('image/.*') &&
+             request.resource.size < 5 * 1024 * 1024; // 5MB max
+    }
+
+    // User avatars
+    match /avatars/{userId}/{fileName} {
+      // Anyone can read avatars
+      allow read: if true;
+      // Only the owner can upload their avatar
+      allow write: if isOwner(userId) && isValidImage();
+    }
+
+    // Book cover images
+    match /book-covers/{userId}/{fileName} {
+      // Anyone can read book covers
+      allow read: if true;
+      // Only authenticated users can upload to their folder
+      allow write: if isOwner(userId) && isValidImage();
+    }
+
+    // Blog images (for admin users)
+    match /blog/{fileName} {
+      allow read: if true;
+      allow write: if isAuthenticated() && isValidImage();
+    }
+  }
+}
