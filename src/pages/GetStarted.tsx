@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { User, MailCheck, Book, Map, MessageCircle, Eye, EyeOff } from 'lucide-react';
+import { User, Book, Map, MessageCircle, Eye, EyeOff } from 'lucide-react';
 import Navbar from '@/components/ui-custom/Navbar';
 import Footer from '@/components/ui-custom/Footer';
 import Button from '@/components/ui-custom/Button';
@@ -11,7 +11,6 @@ const GetStarted = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
   const { signUp, user, loading } = useAuth();
   const navigate = useNavigate();
 
@@ -24,13 +23,17 @@ const GetStarted = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!email || !password) return;
-    
+
     try {
       setIsLoading(true);
-      await signUp(email, password);
-      setSubmitted(true);
+      const result = await signUp(email, password);
+      // Firebase signs in immediately after signup
+      // The AuthContext will navigate to dashboard on success
+      if (!result.success) {
+        // Error already shown via toast in AuthContext
+      }
     } catch (error) {
       console.error("Error signing up:", error);
     } finally {
@@ -45,8 +48,6 @@ const GetStarted = () => {
       <main className="flex-grow pt-28 pb-20">
         <div className="container mx-auto px-4 md:px-6">
           <div className="max-w-3xl mx-auto">
-            {!submitted ? (
-              <>
                 <div className="text-center mb-10">
                   <h1 className="text-3xl md:text-4xl font-bold font-serif mb-4">Join Turtle Turning Pages Today</h1>
                   <p className="text-book-dark/70 text-lg">
@@ -163,22 +164,6 @@ const GetStarted = () => {
                     </div>
                   </div>
                 </div>
-              </>
-            ) : (
-              <div className="text-center py-16">
-                <div className="mb-6 mx-auto w-16 h-16 bg-book-accent/10 rounded-full flex items-center justify-center">
-                  <MailCheck className="w-8 h-8 text-book-accent" />
-                </div>
-                <h2 className="text-2xl md:text-3xl font-bold font-serif mb-4">Thanks for Joining!</h2>
-                <p className="text-book-dark/70 text-lg mb-8">
-                  We've sent a confirmation email to <span className="font-medium">{email}</span>. 
-                  Click the link in the email to complete your registration.
-                </p>
-                <Button as="a" href="/" variant="outline" size="lg">
-                  Return to Home
-                </Button>
-              </div>
-            )}
           </div>
         </div>
       </main>

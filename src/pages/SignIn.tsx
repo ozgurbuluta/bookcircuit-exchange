@@ -11,7 +11,8 @@ const SignIn = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const { signIn } = useAuth();
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const { signIn, resetPassword } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -106,9 +107,22 @@ const SignIn = () => {
                   </div>
                   
                   <div className="text-sm">
-                    <a href="#" className="text-book-accent hover:underline">
-                      Forgot password?
-                    </a>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!email) {
+                          alert('Please enter your email address first.');
+                          return;
+                        }
+                        setIsResettingPassword(true);
+                        await resetPassword(email);
+                        setIsResettingPassword(false);
+                      }}
+                      disabled={isResettingPassword}
+                      className="text-book-accent hover:underline"
+                    >
+                      {isResettingPassword ? 'Sending...' : 'Forgot password?'}
+                    </button>
                   </div>
                 </div>
                 
