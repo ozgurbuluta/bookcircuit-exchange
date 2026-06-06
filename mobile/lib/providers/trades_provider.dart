@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/models.dart';
-import '../services/supabase_service.dart';
+import '../services/firebase_service.dart';
 import 'auth_provider.dart';
 
 /// Trade filter enum
@@ -30,24 +30,34 @@ final tradeFilterProvider = StateProvider<TradeFilter>((ref) => TradeFilter.all)
 /// Trades list provider
 final tradesProvider = FutureProvider.autoDispose<List<Trade>>((ref) async {
   final filter = ref.watch(tradeFilterProvider);
-  final trades = await SupabaseService.getUserTrades(
+  final currentUser = FirebaseService.currentUser;
+
+  var trades = await FirebaseService.getUserTrades(
     statusFilter: filter.statusFilter,
   );
+
+  // Apply additional client-side filtering for incoming/outgoing
+  if (filter == TradeFilter.incoming && currentUser != null) {
+    trades = trades.where((t) => t.recipientId == currentUser.uid).toList();
+  } else if (filter == TradeFilter.outgoing && currentUser != null) {
+    trades = trades.where((t) => t.initiatorId == currentUser.uid).toList();
+  }
+
   return trades;
 });
 
 /// Single trade provider
 final tradeProvider =
     FutureProvider.autoDispose.family<Trade?, String>((ref, tradeId) async {
-  return SupabaseService.getTrade(tradeId);
+  return FirebaseService.getTrade(tradeId);
 });
 
 /// Pending incoming trades count (for badge)
 final pendingTradesCountProvider = FutureProvider.autoDispose<int>((ref) async {
-  final userId = ref.watch(currentUserProvider)?.id;
+  final userId = ref.watch(currentUserProvider)?.uid;
   if (userId == null) return 0;
 
-  final trades = await SupabaseService.getUserTrades();
+  final trades = await FirebaseService.getUserTrades();
   return trades
       .where((t) =>
           t.recipientId == userId &&
@@ -69,12 +79,52 @@ class TradeActionsNotifier extends StateNotifier<AsyncValue<void>> {
   }) async {
     state = const AsyncValue.loading();
     try {
-      final trade = await SupabaseService.createTrade(
-        partnerId: partnerId,
-        myBookIds: myBookIds,
-        theirBookIds: theirBookIds,
-        message: message,
-      );
+      // TODO: Implement create trade in FirebaseService
+      // For now, create directly in Firestore
+      final currentUser = FirebaseService.currentUser;
+      if (currentUser == null) throw Exception('Not authenticated');
+
+      final batch = FirebaseService.db.batch();
+
+      final tradeRef = FirebaseService.db.collection('trades').doc();
+      batch.set(tradeRef, {
+        'initiatorId': currentUser.uid,
+        'recipientId': partnerId,
+        'status': 'pending',
+        'initiatorMessage': message ?? '',
+        'recipientMessage': '',
+        'isDirectRequest': theirBookIds.length == 1 && myBookIds.isEmpty,
+        'isCounteroffered': false,
+        'createdAt': DateTime.now(),
+        'updatedAt': DateTime.now(),
+      });
+
+      // Add trade items
+      for (final bookId in myBookIds) {
+        final itemRef = tradeRef.collection('tradeItems').doc();
+        batch.set(itemRef, {
+          'bookId': bookId,
+          'ownerId': currentUser.uid,
+          'recipientId': partnerId,
+          'itemType': 'book',
+          'createdAt': DateTime.now(),
+        });
+      }
+
+      for (final bookId in theirBookIds) {
+        final itemRef = tradeRef.collection('tradeItems').doc();
+        batch.set(itemRef, {
+          'bookId': bookId,
+          'ownerId': partnerId,
+          'recipientId': currentUser.uid,
+          'itemType': 'book',
+          'createdAt': DateTime.now(),
+        });
+      }
+
+      await batch.commit();
+
+      final trade = await FirebaseService.getTrade(tradeRef.id);
       state = const AsyncValue.data(null);
       return trade;
     } catch (e, st) {
@@ -87,7 +137,7 @@ class TradeActionsNotifier extends StateNotifier<AsyncValue<void>> {
   Future<bool> acceptTrade(String tradeId) async {
     state = const AsyncValue.loading();
     try {
-      await SupabaseService.updateTradeStatus(
+      await FirebaseService.updateTradeStatus(
         tradeId: tradeId,
         newStatus: 'accepted',
       );
@@ -103,7 +153,7 @@ class TradeActionsNotifier extends StateNotifier<AsyncValue<void>> {
   Future<bool> rejectTrade(String tradeId) async {
     state = const AsyncValue.loading();
     try {
-      await SupabaseService.updateTradeStatus(
+      await FirebaseService.updateTradeStatus(
         tradeId: tradeId,
         newStatus: 'rejected',
       );
@@ -119,7 +169,7 @@ class TradeActionsNotifier extends StateNotifier<AsyncValue<void>> {
   Future<bool> cancelTrade(String tradeId) async {
     state = const AsyncValue.loading();
     try {
-      await SupabaseService.updateTradeStatus(
+      await FirebaseService.updateTradeStatus(
         tradeId: tradeId,
         newStatus: 'cancelled',
       );
@@ -135,7 +185,7 @@ class TradeActionsNotifier extends StateNotifier<AsyncValue<void>> {
   Future<bool> completeTrade(String tradeId) async {
     state = const AsyncValue.loading();
     try {
-      await SupabaseService.updateTradeStatus(
+      await FirebaseService.updateTradeStatus(
         tradeId: tradeId,
         newStatus: 'completed',
       );

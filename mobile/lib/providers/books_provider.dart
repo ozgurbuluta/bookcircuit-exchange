@@ -1,6 +1,7 @@
+import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/models.dart';
-import '../services/supabase_service.dart';
+import '../services/firebase_service.dart';
 import '../config/env.dart';
 
 /// Search parameters state
@@ -42,47 +43,79 @@ class BookSearchParams {
 final bookSearchParamsProvider =
     StateProvider<BookSearchParams>((ref) => const BookSearchParams());
 
+/// Calculate distance between two points (Haversine formula)
+double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+  const R = 6371; // Earth's radius in km
+  final dLat = (lat2 - lat1) * pi / 180;
+  final dLon = (lon2 - lon1) * pi / 180;
+  final a = sin(dLat / 2) * sin(dLat / 2) +
+      cos(lat1 * pi / 180) * cos(lat2 * pi / 180) *
+      sin(dLon / 2) * sin(dLon / 2);
+  final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+  return R * c;
+}
+
 /// Books search results provider
 final booksProvider = FutureProvider.autoDispose<List<Book>>((ref) async {
   final params = ref.watch(bookSearchParamsProvider);
 
-  if (params.hasLocation) {
-    return SupabaseService.getBooksWithinDistance(
-      lat: params.lat!,
-      lng: params.lng!,
-      maxDistanceMeters: params.radius * 1000, // km to meters
-      query: params.query,
-      genre: params.genre,
-    );
-  }
-
-  return SupabaseService.getBooks(
+  var books = await FirebaseService.getBooks(
     query: params.query,
     genre: params.genre,
   );
+
+  // Apply geographic filter if location is provided
+  if (params.hasLocation) {
+    books = books.where((book) {
+      if (book.locationLat == null || book.locationLng == null) return false;
+
+      final distance = _calculateDistance(
+        params.lat!,
+        params.lng!,
+        book.locationLat!,
+        book.locationLng!,
+      );
+
+      return distance <= params.radius;
+    }).map((book) {
+      final distance = _calculateDistance(
+        params.lat!,
+        params.lng!,
+        book.locationLat!,
+        book.locationLng!,
+      );
+      return book.copyWith(distanceKm: distance);
+    }).toList();
+
+    // Sort by distance
+    books.sort((a, b) => (a.distanceKm ?? 0).compareTo(b.distanceKm ?? 0));
+  }
+
+  return books;
 });
 
 /// Single book provider
 final bookProvider =
     FutureProvider.autoDispose.family<Book?, String>((ref, bookId) async {
-  return SupabaseService.getBook(bookId);
+  return FirebaseService.getBook(bookId);
 });
 
 /// My books provider
 final myBooksProvider = FutureProvider.autoDispose<List<Book>>((ref) async {
-  return SupabaseService.getMyBooks();
+  return FirebaseService.getMyBooks();
 });
 
 /// User's books provider
 final userBooksProvider =
     FutureProvider.autoDispose.family<List<Book>, String>((ref, userId) async {
-  return SupabaseService.getUserBooks(userId);
+  return FirebaseService.getUserBooks(userId);
 });
 
 /// Book interest state provider
 final bookInterestProvider =
     FutureProvider.autoDispose.family<bool, String>((ref, bookId) async {
-  return SupabaseService.isInterestedInBook(bookId);
+  // TODO: Implement book interest tracking in Firebase
+  return false;
 });
 
 /// Available genres
@@ -114,7 +147,7 @@ class BookActionsNotifier extends StateNotifier<AsyncValue<void>> {
   Future<Book?> createBook(Book book) async {
     state = const AsyncValue.loading();
     try {
-      final created = await SupabaseService.createBook(book);
+      final created = await FirebaseService.createBook(book);
       state = const AsyncValue.data(null);
       return created;
     } catch (e, st) {
@@ -127,7 +160,7 @@ class BookActionsNotifier extends StateNotifier<AsyncValue<void>> {
   Future<Book?> updateBook(Book book) async {
     state = const AsyncValue.loading();
     try {
-      final updated = await SupabaseService.updateBook(book);
+      final updated = await FirebaseService.updateBook(book);
       state = const AsyncValue.data(null);
       return updated;
     } catch (e, st) {
@@ -140,7 +173,7 @@ class BookActionsNotifier extends StateNotifier<AsyncValue<void>> {
   Future<bool> deleteBook(String bookId) async {
     state = const AsyncValue.loading();
     try {
-      await SupabaseService.deleteBook(bookId);
+      await FirebaseService.deleteBook(bookId);
       state = const AsyncValue.data(null);
       return true;
     } catch (e, st) {
@@ -151,11 +184,8 @@ class BookActionsNotifier extends StateNotifier<AsyncValue<void>> {
 
   /// Toggle interest in a book
   Future<bool> toggleInterest(String bookId) async {
-    try {
-      return await SupabaseService.toggleBookInterest(bookId);
-    } catch (e) {
-      return false;
-    }
+    // TODO: Implement in Firebase
+    return false;
   }
 }
 
