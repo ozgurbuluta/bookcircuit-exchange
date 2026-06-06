@@ -1,32 +1,140 @@
 import { OpenLibraryBook, OpenLibraryResponse, Book, BookCondition, Profile, BookWithRequestDetails } from './types';
-import { supabase } from './supabase';
+import { db, auth } from './firebase';
+import {
+  collection,
+  doc,
+  addDoc,
+  getDoc,
+  getDocs,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
+  limit,
+  serverTimestamp,
+  Timestamp,
+} from 'firebase/firestore';
 
 // Base URL for Open Library API
 const OPEN_LIBRARY_API_URL = 'https://openlibrary.org';
 
-// Search for books by title, author, or ISBN
+// Helper to convert Firestore document to Book
+const docToBook = (docSnap: any, includeOwner?: Profile): Book => {
+  const data = docSnap.data ? docSnap.data() : docSnap;
+  const id = docSnap.id || data.id;
+
+  return {
+    id,
+    user_id: data.userId,
+    title: data.title || '',
+    author: data.author || '',
+    description: data.description || '',
+    condition: data.condition || 'Good',
+    isbn: data.isbn || '',
+    cover_img_url: data.coverImgUrl || '',
+    publisher: data.publisher || '',
+    publication_year: data.publicationYear,
+    language: data.language || '',
+    pages: data.pages,
+    genres: data.genres || [],
+    location_text: data.locationText || '',
+    postal_code: data.postalCode || '',
+    location_lat: data.locationLat,
+    location_lng: data.locationLng,
+    status: data.status || 'available',
+    current_trade_id: data.currentTradeId,
+    trade_count: data.tradeCount || 0,
+    interest_count: data.interestCount || 0,
+    created_at: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+    updated_at: data.updatedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+    owner: includeOwner,
+  };
+};
+
+// Helper to convert Book to Firestore data
+const bookToFirestore = (book: Partial<Book> & { user_id?: string }) => {
+  return {
+    userId: book.user_id,
+    title: book.title || '',
+    author: book.author || '',
+    description: book.description || '',
+    condition: book.condition || 'Good',
+    isbn: book.isbn || '',
+    coverImgUrl: book.cover_img_url || '',
+    publisher: book.publisher || '',
+    publicationYear: book.publication_year || null,
+    language: book.language || '',
+    pages: book.pages || null,
+    genres: book.genres || [],
+    locationText: book.location_text || '',
+    postalCode: book.postal_code || '',
+    locationLat: book.location_lat || null,
+    locationLng: book.location_lng || null,
+    status: book.status || 'available',
+    currentTradeId: book.current_trade_id || null,
+    tradeCount: book.trade_count || 0,
+    interestCount: book.interest_count || 0,
+    updatedAt: serverTimestamp(),
+  };
+};
+
+// Helper to fetch user profile
+const fetchUserProfile = async (userId: string): Promise<Profile | undefined> => {
+  try {
+    const userDoc = await getDoc(doc(db, 'users', userId));
+    if (userDoc.exists()) {
+      const data = userDoc.data();
+      return {
+        id: userDoc.id,
+        full_name: data.fullName || '',
+        avatar_url: data.avatarUrl || '',
+        email: data.email || '',
+        location_city: data.locationCity || '',
+        location_state: data.locationState || '',
+        location_country: data.locationCountry || '',
+      } as Profile;
+    }
+  } catch (error) {
+    console.error('Error fetching user profile:', error);
+  }
+  return undefined;
+};
+
+// Calculate distance between two points (Haversine formula)
+const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const R = 6371; // Earth's radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; // Distance in km
+};
+
+// Search for books by title, author, or ISBN (Open Library API)
 export const searchBooks = async (query: string): Promise<OpenLibraryBook[]> => {
   try {
     const response = await fetch(
       `${OPEN_LIBRARY_API_URL}/search.json?q=${encodeURIComponent(query)}&limit=10`
     );
-    
+
     if (!response.ok) {
       throw new Error(`Error fetching book data: ${response.statusText}`);
     }
-    
+
     const data: OpenLibraryResponse = await response.json();
-    
+
     // Enhance the search results with additional data where possible
     const enhancedResults = await Promise.all(
       data.docs.map(async (book) => {
-        // If we have a work key, try to fetch additional details
         if (book.key && book.key.startsWith('/works/')) {
           try {
             const workResponse = await fetch(`${OPEN_LIBRARY_API_URL}${book.key}.json`);
             if (workResponse.ok) {
               const workData = await workResponse.json();
-              // Merge the work data with the search result
               return {
                 ...book,
                 description: workData.description || book.description,
@@ -40,7 +148,7 @@ export const searchBooks = async (query: string): Promise<OpenLibraryBook[]> => 
         return book;
       })
     );
-    
+
     return enhancedResults;
   } catch (error) {
     console.error('Error searching books:', error);
@@ -55,24 +163,20 @@ export const getBookCoverUrl = (coverId: number, size: 'S' | 'M' | 'L' = 'M'): s
 
 // Format book data from Open Library for our database
 export const formatBookData = (bookData: OpenLibraryBook): Partial<Book> => {
-  // Process description field which can be a string or an object
   let description = '';
-  
   if (typeof bookData.description === 'string') {
     description = bookData.description;
   } else if (bookData.description && typeof bookData.description === 'object' && 'value' in bookData.description) {
     description = bookData.description.value;
   }
-  
-  // Get author from either the authors array or author_name array
+
   let author = '';
   if (bookData.authors && bookData.authors.length > 0 && bookData.authors[0].name) {
     author = bookData.authors[0].name;
   } else if (bookData.author_name && bookData.author_name.length > 0) {
     author = bookData.author_name[0];
   }
-  
-  // Get ISBN from various possible fields
+
   let isbn = '';
   if (bookData.isbn_13 && bookData.isbn_13.length > 0) {
     isbn = bookData.isbn_13[0];
@@ -81,16 +185,14 @@ export const formatBookData = (bookData: OpenLibraryBook): Partial<Book> => {
   } else if (bookData.isbn && bookData.isbn.length > 0) {
     isbn = bookData.isbn[0];
   }
-  
-  // Get cover image URL if a cover ID is available
+
   let coverImgUrl = undefined;
   if (bookData.covers && bookData.covers.length > 0) {
     coverImgUrl = getBookCoverUrl(bookData.covers[0]);
   } else if (bookData.cover_i) {
-    // Some search results use cover_i instead of covers array
     coverImgUrl = getBookCoverUrl(bookData.cover_i);
   }
-  
+
   return {
     title: bookData.title,
     author,
@@ -117,38 +219,34 @@ export const addBook = async (
   }
 ): Promise<{ success: boolean; error?: string; book?: Book }> => {
   try {
-    // Validate and process data before insert
-    let processedData = {
-      user_id: userId,
-      ...bookData,
+    const firestoreData = {
+      userId,
+      title: bookData.title,
+      author: bookData.author || '',
+      description: bookData.description || '',
+      condition: bookData.condition,
+      isbn: bookData.isbn || '',
+      coverImgUrl: bookData.cover_img_url || '',
+      locationText: bookData.location_text,
+      postalCode: bookData.postal_code || '',
+      locationLat: bookData.lat || null,
+      locationLng: bookData.lng || null,
+      status: 'available',
+      tradeCount: 0,
+      interestCount: 0,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     };
-    
-    // Check if cover_img_url is a data URL and too large
-    if (processedData.cover_img_url && processedData.cover_img_url.startsWith('data:')) {
-      // If it's longer than 500KB (rough estimate for 1MB in DB), use a placeholder instead
-      if (processedData.cover_img_url.length > 500000) {
-        console.warn('Cover image too large for DB, replacing with placeholder');
-        processedData.cover_img_url = 'https://via.placeholder.com/300x400?text=Book+Cover';
-      }
-    }
-    
-    // Note: location geography column will be automatically generated by the trigger
-    // based on lat/lng values
-    
-    const { data, error } = await supabase
-      .from('books')
-      .insert(processedData)
-      .select()
-      .single();
-      
-    if (error) throw error;
-    
-    return { success: true, book: data as Book };
+
+    const docRef = await addDoc(collection(db, 'books'), firestoreData);
+    const newDoc = await getDoc(docRef);
+
+    return { success: true, book: docToBook(newDoc) };
   } catch (error) {
     console.error('Error adding book:', error);
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error occurred' 
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
     };
   }
 };
@@ -156,15 +254,14 @@ export const addBook = async (
 // Get all books for a user
 export const getUserBooks = async (userId: string): Promise<Book[]> => {
   try {
-    const { data, error } = await supabase
-      .from('books')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
-      
-    if (error) throw error;
-    
-    return data as Book[];
+    const q = query(
+      collection(db, 'books'),
+      where('userId', '==', userId),
+      orderBy('createdAt', 'desc')
+    );
+
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => docToBook(doc));
   } catch (error) {
     console.error('Error getting user books:', error);
     return [];
@@ -172,22 +269,19 @@ export const getUserBooks = async (userId: string): Promise<Book[]> => {
 };
 
 // Get all books (with optional limit)
-export const getAllBooks = async (limit?: number): Promise<Book[]> => {
+export const getAllBooks = async (limitCount?: number): Promise<Book[]> => {
   try {
-    let query = supabase
-      .from('books')
-      .select('*')
-      .order('created_at', { ascending: false });
-      
-    if (limit) {
-      query = query.limit(limit);
+    let q = query(
+      collection(db, 'books'),
+      orderBy('createdAt', 'desc')
+    );
+
+    if (limitCount) {
+      q = query(q, limit(limitCount));
     }
-    
-    const { data, error } = await query;
-      
-    if (error) throw error;
-    
-    return data as Book[];
+
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => docToBook(doc));
   } catch (error) {
     console.error('Error getting all books:', error);
     return [];
@@ -197,15 +291,20 @@ export const getAllBooks = async (limit?: number): Promise<Book[]> => {
 // Get a book by ID
 export const getBookById = async (bookId: string): Promise<Book | null> => {
   try {
-    const { data, error } = await supabase
-      .from('books')
-      .select('*')
-      .eq('id', bookId)
-      .single();
-      
-    if (error) throw error;
-    
-    return data as Book;
+    const docSnap = await getDoc(doc(db, 'books', bookId));
+
+    if (!docSnap.exists()) {
+      return null;
+    }
+
+    const book = docToBook(docSnap);
+
+    // Fetch owner profile
+    if (book.user_id) {
+      book.owner = await fetchUserProfile(book.user_id);
+    }
+
+    return book;
   } catch (error) {
     console.error('Error getting book by ID:', error);
     return null;
@@ -215,19 +314,13 @@ export const getBookById = async (bookId: string): Promise<Book | null> => {
 // Delete a book
 export const deleteBook = async (bookId: string): Promise<{ success: boolean; error?: string }> => {
   try {
-    const { error } = await supabase
-      .from('books')
-      .delete()
-      .eq('id', bookId);
-      
-    if (error) throw error;
-    
+    await deleteDoc(doc(db, 'books', bookId));
     return { success: true };
   } catch (error) {
     console.error('Error deleting book:', error);
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error occurred' 
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
     };
   }
 };
@@ -249,60 +342,45 @@ export const updateBook = async (
   }
 ): Promise<{ success: boolean; error?: string; book?: Book }> => {
   try {
-    // Validate and process data before update
-    let processedData = {
-      ...bookData,
+    const updateData = {
+      title: bookData.title,
+      author: bookData.author || '',
+      description: bookData.description || '',
+      condition: bookData.condition,
+      isbn: bookData.isbn || '',
+      coverImgUrl: bookData.cover_img_url || '',
+      locationText: bookData.location_text,
+      postalCode: bookData.postal_code || '',
+      locationLat: bookData.lat || null,
+      locationLng: bookData.lng || null,
+      updatedAt: serverTimestamp(),
     };
-    
-    // Check if cover_img_url is a data URL and too large
-    if (processedData.cover_img_url && processedData.cover_img_url.startsWith('data:')) {
-      // If it's longer than 500KB (rough estimate for 1MB in DB), use a placeholder instead
-      if (processedData.cover_img_url.length > 500000) {
-        console.warn('Cover image too large for DB, replacing with placeholder');
-        processedData.cover_img_url = 'https://via.placeholder.com/300x400?text=Book+Cover';
-      }
-    }
-    
-    console.log('[bookService.ts] updateBook - bookId:', bookId);
-    console.log('[bookService.ts] updateBook - processedData:', JSON.stringify(processedData, null, 2));
 
-    // Note: location geography column will be automatically updated by the trigger
-    // based on lat/lng values
-    
-    const { data, error } = await supabase
-      .from('books')
-      .update(processedData)
-      .eq('id', bookId)
-      .select()
-      .single();
-      
-    if (error) throw error;
-    
-    return { success: true, book: data as Book };
+    await updateDoc(doc(db, 'books', bookId), updateData);
+
+    const updatedDoc = await getDoc(doc(db, 'books', bookId));
+    return { success: true, book: docToBook(updatedDoc) };
   } catch (error) {
     console.error('Error updating book:', error);
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error occurred' 
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
     };
   }
 };
 
 // Get recently added books
-export const getRecentlyAddedBooks = async (limit: number = 8): Promise<Book[]> => {
+export const getRecentlyAddedBooks = async (limitCount: number = 8): Promise<Book[]> => {
   try {
-    const { data, error } = await supabase
-      .from('books')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(limit);
-    
-    if (error) {
-      console.error('Error fetching recently added books:', error);
-      return [];
-    }
-    
-    return data || [];
+    const q = query(
+      collection(db, 'books'),
+      where('status', '==', 'available'),
+      orderBy('createdAt', 'desc'),
+      limit(limitCount)
+    );
+
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => docToBook(doc));
   } catch (error) {
     console.error('Error fetching recently added books:', error);
     return [];
@@ -321,129 +399,96 @@ export const searchBooksByParams = async (
   }
 ): Promise<Book[]> => {
   try {
-    // Check if we have text search criteria
-    const hasTextSearch = params.title || params.author;
-    // Check if we have location search criteria
-    const hasLocationSearch = params.latitude && params.longitude && params.radius;
-    
-    if (hasLocationSearch) {
-      // Convert radius from km to meters for the query
-      const radiusInMeters = params.radius * 1000;
-      
-      console.log('[bookService] Performing geographic search with params:', {
-        search_lat: params.latitude,
-        search_lng: params.longitude,
-        max_distance_meters: radiusInMeters,
-        title: params.title,
-        author: params.author
-      });
-      
-      // Use the geographic function to get books within distance
-      const { data, error } = await supabase.rpc('books_within_distance', {
-        search_lat: params.latitude,
-        search_lng: params.longitude,
-        max_distance_meters: radiusInMeters
-      });
-      
-      if (error) {
-        console.error('[bookService] Error performing geographic search:', error);
-        // Fall back to regular search if geographic search fails
-        console.log('[bookService] Falling back to non-geographic search due to error.');
-        return fallbackSearch(params);
-      } else {
-        console.log('[bookService] Geographic search succeeded.');
-        
-        let results = (Array.isArray(data) ? data : []) as (Book & { calculated_distance_meters: number })[];
-        
-        // If we also have text search criteria, filter the geographic results
-        if (hasTextSearch && results.length > 0) {
-          console.log('[bookService] Applying text filters to geographic results.');
-          results = results.filter(book => {
-            let matchesTitle = true;
-            let matchesAuthor = true;
-            
-            if (params.title) {
-              matchesTitle = book.title?.toLowerCase().includes(params.title.toLowerCase()) || false;
-            }
-            
-            if (params.author) {
-              matchesAuthor = book.author?.toLowerCase().includes(params.author.toLowerCase()) || false;
-            }
-            
-            return matchesTitle && matchesAuthor;
-          });
-          
-          console.log(`[bookService] Text filtering reduced results from ${data.length} to ${results.length}`);
-        }
-        
-        // Log the results including the distance
-        console.log('[bookService] Final results:', results.map(r => ({ 
-          id: r.id, 
-          title: r.title, 
-          author: r.author,
-          calculated_distance_meters: r.calculated_distance_meters 
-        })));
-        
-        if (results.length === 0) {
-          console.log('[bookService] Combined search returned no results.');
-        }
-        
-        // Results are already sorted by distance by the SQL function
-        return results;
-      }
-    } else {
-      // For non-geographic searches, use regular query
-      console.log('[bookService] Performing non-geographic search.');
-      return fallbackSearch(params);
+    // Get all available books first
+    const q = query(
+      collection(db, 'books'),
+      where('status', '==', 'available'),
+      orderBy('createdAt', 'desc'),
+      limit(100)
+    );
+
+    const snapshot = await getDocs(q);
+    let results = snapshot.docs.map(doc => docToBook(doc));
+
+    // Apply text filters
+    if (params.title) {
+      const titleLower = params.title.toLowerCase();
+      results = results.filter(book =>
+        book.title.toLowerCase().includes(titleLower)
+      );
     }
+
+    if (params.author) {
+      const authorLower = params.author.toLowerCase();
+      results = results.filter(book =>
+        book.author?.toLowerCase().includes(authorLower)
+      );
+    }
+
+    if (params.postal_code) {
+      results = results.filter(book =>
+        book.postal_code === params.postal_code
+      );
+    }
+
+    // Apply geographic filter if provided
+    if (params.latitude && params.longitude && params.radius) {
+      results = results.filter(book => {
+        if (!book.location_lat || !book.location_lng) return false;
+
+        const distance = calculateDistance(
+          params.latitude!,
+          params.longitude!,
+          book.location_lat,
+          book.location_lng
+        );
+
+        // Add distance to book object
+        (book as any).distance_km = distance;
+        (book as any).calculated_distance_meters = distance * 1000;
+
+        return distance <= params.radius!;
+      });
+
+      // Sort by distance
+      results.sort((a, b) => {
+        const distA = (a as any).distance_km || Infinity;
+        const distB = (b as any).distance_km || Infinity;
+        return distA - distB;
+      });
+    }
+
+    return results;
   } catch (error) {
     console.error('Error searching books:', error);
     return [];
   }
 };
 
-// Helper function for regular search (without geographic component)
-const fallbackSearch = async (params: {
-  title?: string;
-  author?: string;
-  postal_code?: string;
-  isQuickSearch?: boolean; // New parameter to indicate if this is a quick search
-}): Promise<Book[]> => {
+// Quick search books by title or author
+export const quickSearchBooks = async (searchQuery: string): Promise<Book[]> => {
   try {
-    // Start building the query
-    let query = supabase.from('books').select('*');
-
-    // For quick search, we want to search both title AND author with OR logic
-    if (params.isQuickSearch && params.title && params.author && params.title === params.author) {
-      // Use OR logic for quick search when searching the same term in both fields
-      query = query.or(`title.ilike.%${params.title}%,author.ilike.%${params.author}%`);
-    } else {
-      // Apply filters individually with AND logic for advanced search
-      if (params.title) {
-        query = query.ilike('title', `%${params.title}%`);
-      }
-      
-      if (params.author) {
-        query = query.ilike('author', `%${params.author}%`);
-      }
-    }
-    
-    if (params.postal_code) {
-      // Fallback to exact postal code search
-      query = query.eq('postal_code', params.postal_code);
-    }
-
-    // Execute the query
-    const { data, error } = await query.order('created_at', { ascending: false });
-    
-    if (error) {
-      console.error('Error searching books:', error);
+    if (!searchQuery.trim()) {
       return [];
     }
-    
-    return data || [];
+
+    const q = query(
+      collection(db, 'books'),
+      where('status', '==', 'available'),
+      orderBy('createdAt', 'desc'),
+      limit(50)
+    );
+
+    const snapshot = await getDocs(q);
+    const allBooks = snapshot.docs.map(doc => docToBook(doc));
+
+    const queryLower = searchQuery.toLowerCase();
+    return allBooks.filter(book =>
+      book.title.toLowerCase().includes(queryLower) ||
+      book.author?.toLowerCase().includes(queryLower)
+    );
   } catch (error) {
-    console.error('Error in fallback search:', error);
+    console.error('Error in quick search:', error);
     return [];
   }
 };
@@ -455,70 +500,55 @@ export const requestBook = async (
 ): Promise<{ success: boolean; requestId?: string; error?: string }> => {
   try {
     // First, check if the book exists
-    const { data: book, error: bookError } = await supabase
-      .from('books')
-      .select('user_id')
-      .eq('id', bookId)
-      .single();
-    
-    if (bookError || !book) {
+    const bookDoc = await getDoc(doc(db, 'books', bookId));
+
+    if (!bookDoc.exists()) {
       return { success: false, error: 'Book not found' };
     }
-    
+
+    const bookData = bookDoc.data();
+
     // Don't allow requesting your own book
-    if (book.user_id === requesterId) {
+    if (bookData.userId === requesterId) {
       return { success: false, error: 'You cannot request your own book' };
     }
-    
+
     // Check if a request already exists
-    const { data: existingRequest, error: existingRequestError } = await supabase
-      .from('book_requests')
-      .select('*')
-      .eq('book_id', bookId)
-      .eq('requester_id', requesterId)
-      .single();
-      
-    if (existingRequest) {
+    const existingQuery = query(
+      collection(db, 'bookRequests'),
+      where('bookId', '==', bookId),
+      where('requesterId', '==', requesterId),
+      where('status', '==', 'pending')
+    );
+
+    const existingSnapshot = await getDocs(existingQuery);
+    if (!existingSnapshot.empty) {
       return { success: false, error: 'You have already requested this book' };
     }
-    
+
     // Create the request
-    const { data: newRequestData, error: requestError } = await supabase
-      .from('book_requests')
-      .insert([
-        {
-          book_id: bookId,
-          requester_id: requesterId,
-          owner_id: book.user_id,
-          status: 'pending'
-        }
-      ])
-      .select('id')
-      .single();
-      
-    if (requestError || !newRequestData) {
-      return { success: false, error: requestError?.message || 'Failed to create request or retrieve ID' };
-    }
-    
+    const requestData = {
+      bookId,
+      requesterId,
+      ownerId: bookData.userId,
+      status: 'pending',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    const requestRef = await addDoc(collection(db, 'bookRequests'), requestData);
+
     // Create a notification for the book owner
-    const { error: notificationError } = await supabase
-      .from('notifications')
-      .insert([
-        {
-          user_id: book.user_id,
-          type: 'book_request',
-          message: `Someone has requested your book`,
-          related_id: bookId,
-          read: false
-        }
-      ]);
-      
-    if (notificationError) {
-      console.error('Error creating notification:', notificationError);
-      // We'll consider the request successful even if notification fails
-    }
-    
-    return { success: true, requestId: newRequestData.id };
+    await addDoc(collection(db, 'notifications'), {
+      userId: bookData.userId,
+      type: 'book_request',
+      message: 'Someone has requested your book',
+      relatedId: bookId,
+      read: false,
+      createdAt: serverTimestamp(),
+    });
+
+    return { success: true, requestId: requestRef.id };
   } catch (error) {
     console.error('Error requesting book:', error);
     return { success: false, error: 'An unexpected error occurred' };
@@ -528,51 +558,22 @@ export const requestBook = async (
 // Cancel a book request
 export const cancelBookRequest = async (
   requestId: string,
-  requesterId: string // Ensure only the requester can cancel
+  requesterId: string
 ): Promise<{ success: boolean; error?: string }> => {
   try {
-    // First, verify the request exists and belongs to the requester
-    const { data: request, error: fetchError } = await supabase
-      .from('book_requests')
-      .select('id, requester_id')
-      .eq('id', requestId)
-      .single();
+    const requestDoc = await getDoc(doc(db, 'bookRequests', requestId));
 
-    if (fetchError) {
-      console.error('Error fetching book request for cancellation:', fetchError);
-      return { success: false, error: 'Request not found or error fetching it.' };
-    }
-
-    if (!request) {
+    if (!requestDoc.exists()) {
       return { success: false, error: 'Request not found.' };
     }
 
-    if (request.requester_id !== requesterId) {
+    const requestData = requestDoc.data();
+
+    if (requestData.requesterId !== requesterId) {
       return { success: false, error: 'You are not authorized to cancel this request.' };
     }
 
-    // Proceed with deletion
-    console.log(`[cancelBookRequest] Attempting to delete request ID: ${requestId} for user: ${requesterId}`); 
-    const deleteResponse = await supabase // Store the whole response
-      .from('book_requests')
-      .delete()
-      .eq('id', requestId);
-
-    // Log the entire response object
-    console.log(`[cancelBookRequest] Raw delete response: ${JSON.stringify(deleteResponse)}`);
-
-    const { error: deleteError, count } = deleteResponse; // Destructure after logging
-
-    // Keep previous log for context
-    console.log(`[cancelBookRequest] Delete operation result - Error: ${JSON.stringify(deleteError)}, Count: ${count}`);
-
-    if (deleteError) {
-      console.error('Error deleting book request:', deleteError);
-      return { success: false, error: deleteError.message };
-    }
-
-    // Optionally: Delete related notification? 
-    // For now, we'll leave notifications as they might still be relevant history.
+    await deleteDoc(doc(db, 'bookRequests', requestId));
 
     return { success: true };
   } catch (error) {
@@ -584,133 +585,62 @@ export const cancelBookRequest = async (
 // Get requested books for a user
 export const getUserRequestedBooks = async (userId: string): Promise<BookWithRequestDetails[]> => {
   try {
-    // First get all book requests made by this user
-    const { data, error } = await supabase
-      .from('book_requests')
-      .select(`
-        id,
-        book_id,
-        owner_id,
-        status,
-        created_at,
-        books:book_id (
-          id, 
-          title, 
-          author, 
-          description, 
-          condition, 
-          cover_img_url, 
-          location_text,
-          postal_code,
-          created_at
-        ),
-        owners:owner_id (
-          id,
-          full_name,
-          avatar_url
-        )
-      `)
-      .eq('requester_id', userId);
-    
-    if (error) {
-      console.error('Error fetching requested books:', error);
-      return [];
+    const q = query(
+      collection(db, 'bookRequests'),
+      where('requesterId', '==', userId),
+      orderBy('createdAt', 'desc')
+    );
+
+    const snapshot = await getDocs(q);
+    const requests = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+    // Fetch book details for each request
+    const booksWithDetails: BookWithRequestDetails[] = [];
+
+    for (const request of requests) {
+      const bookDoc = await getDoc(doc(db, 'books', (request as any).bookId));
+
+      if (bookDoc.exists()) {
+        const book = docToBook(bookDoc);
+
+        // Fetch owner profile
+        if ((request as any).ownerId) {
+          book.owner = await fetchUserProfile((request as any).ownerId);
+        }
+
+        booksWithDetails.push({
+          ...book,
+          request_id: request.id,
+          request_status: (request as any).status,
+          request_date: (request as any).createdAt?.toDate?.()?.toISOString(),
+        });
+      }
     }
-    
-    // Transform the data to get the books with additional request information
-    const requestedBooks = data?.map(item => {
-      const book = item.books as unknown as BookWithRequestDetails;
-      // Add owner information to the book
-      if (book && item.owners && Array.isArray(item.owners) && item.owners.length > 0) {
-        book.owner = item.owners[0] as Profile;
-      } else if (book && item.owners && !Array.isArray(item.owners)) {
-        book.owner = item.owners as Profile;
-      }
-      
-      // Add request information if book exists
-      if (book) {
-        book.request_id = item.id;
-        book.request_status = item.status;
-        book.request_date = item.created_at;
-      }
-      return book;
-    }).filter(Boolean).filter(book => book !== null && book !== undefined) as BookWithRequestDetails[] || [];
-    
-    return requestedBooks;
+
+    return booksWithDetails;
   } catch (error) {
     console.error('Error fetching requested books:', error);
     return [];
   }
 };
 
-// Add a new test function to check geography generation
+// Test function for debugging
 export const testGeographyColumn = async (): Promise<{ success: boolean; message: string }> => {
   try {
-    // First, query a book to see if it has a location column populated
-    const { data: books, error: booksError } = await supabase
-      .from('books')
-      .select('*')
-      .limit(5);
-      
-    if (booksError) throw booksError;
-    
-    console.log('Sample books to check location column:', books);
-    
-    // Then try to query using ST_DWithin to see if PostGIS is working
-    if (books && books.length > 0) {
-      const testLat = 37.7749;
-      const testLng = -122.4194;
-      const testRadius = 100000; // 100km in meters
-      
-      const { data: spatialBooks, error: spatialError } = await supabase.rpc(
-        'books_within_distance',
-        {
-          lat: testLat,
-          lng: testLng,
-          distance_meters: testRadius
-        }
-      );
-      
-      if (spatialError) {
-        console.error('Spatial query error:', spatialError);
-        return { 
-          success: false, 
-          message: `Spatial query failed: ${spatialError.message}` 
-        };
-      }
-      
-      console.log('Spatial query results:', spatialBooks);
-      
-      return { 
-        success: true, 
-        message: `Test complete. Found ${spatialBooks?.length || 0} books within 100km of San Francisco` 
-      };
-    }
-    
-    return { success: false, message: 'No books found to test' };
+    const books = await getAllBooks(5);
+    console.log('Sample books:', books);
+    return {
+      success: true,
+      message: `Found ${books.length} books in the database`
+    };
   } catch (error) {
-    console.error('Error testing geography column:', error);
-    return { 
-      success: false, 
-      message: error instanceof Error ? error.message : 'Unknown error occurred' 
+    console.error('Error testing:', error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Unknown error occurred'
     };
   }
 };
-
-// Add a new function specifically for quick search
-export const quickSearchBooks = async (query: string): Promise<Book[]> => {
-  try {
-    if (!query.trim()) {
-      return [];
-    }
-    
-    return fallbackSearch({
-      title: query.trim(),
-      author: query.trim(),
-      isQuickSearch: true
-    });
-  } catch (error) {
-    console.error('Error in quick search:', error);
-    return [];
-  }
-}; 
