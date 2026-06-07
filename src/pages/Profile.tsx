@@ -5,7 +5,8 @@ import Navbar from '@/components/ui-custom/Navbar';
 import Footer from '@/components/ui-custom/Footer';
 import Button from '@/components/ui-custom/Button';
 import { useAuth } from '@/context/AuthContext';
-import { supabase } from '@/lib/supabase';
+import { getProfileById, updateProfile } from '@/lib/profileService';
+import { uploadAvatar } from '@/lib/storageService';
 import { toast } from "@/components/ui/use-toast";
 
 interface UserProfile {
@@ -43,32 +44,18 @@ const Profile = () => {
   const fetchProfile = async () => {
     try {
       setLoading(true);
-      
-      // Check if profiles table exists, if not show a message
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user?.id)
-        .single();
-      
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching profile:', error);
-        toast({
-          title: "Error fetching profile",
-          description: error.message,
-          variant: "destructive"
-        });
-      }
-      
+
+      const data = await getProfileById(user?.id || '');
+
       if (data) {
         setProfile({
           id: user?.id || '',
           full_name: data.full_name || '',
           bio: data.bio || '',
-          location: data.location || '',
-          favorite_genre: data.favorite_genre || '',
+          location: data.location_city || '',
+          favorite_genre: '',
           website: data.website || '',
-          avatar_url: data.avatar_url
+          avatar_url: data.avatar_url || null
         });
       }
     } catch (error: any) {
@@ -85,27 +72,24 @@ const Profile = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!user) return;
-    
+
     try {
       setUpdating(true);
-      
-      const { error } = await supabase
-        .from('profiles')
-        .upsert({
-          id: user.id,
-          full_name: profile.full_name,
-          bio: profile.bio,
-          location: profile.location,
-          favorite_genre: profile.favorite_genre,
-          website: profile.website,
-          avatar_url: profile.avatar_url,
-          updated_at: new Date().toISOString()
-        });
-      
-      if (error) throw error;
-      
+
+      const result = await updateProfile(user.id, {
+        full_name: profile.full_name,
+        bio: profile.bio,
+        location_city: profile.location,
+        website: profile.website,
+        avatar_url: profile.avatar_url || undefined,
+      });
+
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
       toast({
         title: "Profile updated",
         description: "Your profile has been successfully updated",
@@ -126,76 +110,33 @@ const Profile = () => {
     if (!e.target.files || e.target.files.length === 0) {
       return;
     }
-    
+
     const file = e.target.files[0];
-    const fileExt = file.name.split('.').pop();
-    const fileName = `avatar-${Date.now()}.${fileExt}`; // Adding timestamp to create unique filenames
-    const filePath = `${user?.id}/${fileName}`;
-    
+
     try {
       setAvatarUploading(true);
-      
-      // If we already have an avatar, try to remove it first
-      if (profile.avatar_url) {
-        try {
-          // Extract the old path from the URL
-          const urlParts = profile.avatar_url.split('/');
-          const oldFileName = urlParts[urlParts.length - 1];
-          const oldFilePath = `${user?.id}/${oldFileName}`;
-          
-          // Try to remove old file, but don't let it block the upload if it fails
-          await supabase
-            .storage
-            .from('avatars')
-            .remove([oldFilePath])
-            .catch(err => console.log('Note: Could not remove old avatar:', err.message));
-        } catch (removeError) {
-          // Just log it, don't prevent the upload of the new avatar
-          console.log('Failed to remove old avatar:', removeError);
-        }
+
+      const result = await uploadAvatar(file);
+
+      if (!result.success || !result.url) {
+        throw new Error(result.error || 'Upload failed');
       }
-      
-      // Upload image to storage
-      const { error: uploadError } = await supabase
-        .storage
-        .from('avatars')
-        .upload(filePath, file, { upsert: false }); // Changed to false since we're creating a new file
-      
-      if (uploadError) {
-        if (uploadError.message.includes('bucket') || uploadError.message.includes('Bucket')) {
-          throw new Error(
-            "Storage bucket not found. Please run the SQL setup script to create the avatars bucket."
-          );
-        } else if (uploadError.message.includes('security policy') || uploadError.message.includes('violates')) {
-          throw new Error(
-            "Permission denied. The storage security policies need to be updated."
-          );
-        }
-        throw uploadError;
-      }
-      
-      // Get public URL
-      const { data } = supabase
-        .storage
-        .from('avatars')
-        .getPublicUrl(filePath);
-      
+
       // Update profile with avatar URL
-      const { error: profileUpdateError } = await supabase
-        .from('profiles')
-        .update({ avatar_url: data.publicUrl })
-        .eq('id', user?.id);
-        
-      if (profileUpdateError) {
-        throw profileUpdateError;
+      const updateResult = await updateProfile(user?.id || '', {
+        avatar_url: result.url
+      });
+
+      if (!updateResult.success) {
+        throw new Error(updateResult.error);
       }
-      
+
       // Update local state
       setProfile(prev => ({
         ...prev,
-        avatar_url: data.publicUrl
+        avatar_url: result.url!
       }));
-      
+
       toast({
         title: "Avatar uploaded",
         description: "Your profile image has been updated",
@@ -211,7 +152,7 @@ const Profile = () => {
       setAvatarUploading(false);
     }
   };
-  
+
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col">
@@ -230,7 +171,7 @@ const Profile = () => {
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
-      
+
       <main className="flex-grow pt-28 pb-20">
         <div className="container mx-auto px-4 md:px-6">
           <div className="max-w-4xl mx-auto">
@@ -239,7 +180,7 @@ const Profile = () => {
                 <User className="h-6 w-6 text-book-accent mr-2" />
                 <h1 className="text-2xl md:text-3xl font-bold font-serif">Your Profile</h1>
               </div>
-              
+
               <form onSubmit={handleSubmit}>
                 <div className="mb-8 flex flex-col items-center">
                   <div className="relative mb-4">
@@ -249,9 +190,9 @@ const Profile = () => {
                       </div>
                     ) : (
                       profile.avatar_url ? (
-                        <img 
-                          src={profile.avatar_url} 
-                          alt="Profile" 
+                        <img
+                          src={profile.avatar_url}
+                          alt="Profile"
                           className="w-32 h-32 rounded-full object-cover border-2 border-book-accent"
                         />
                       ) : (
@@ -260,16 +201,16 @@ const Profile = () => {
                         </div>
                       )
                     )}
-                    <label 
-                      htmlFor="avatar-upload" 
+                    <label
+                      htmlFor="avatar-upload"
                       className="absolute bottom-0 right-0 bg-book-accent text-white p-2 rounded-full cursor-pointer hover:bg-book-accent/80 transition-colors"
                     >
                       <Camera className="h-5 w-5" />
                     </label>
-                    <input 
-                      id="avatar-upload" 
-                      type="file" 
-                      className="hidden" 
+                    <input
+                      id="avatar-upload"
+                      type="file"
+                      className="hidden"
                       accept="image/*"
                       onChange={handleAvatarUpload}
                       disabled={avatarUploading}
@@ -277,71 +218,71 @@ const Profile = () => {
                   </div>
                   <p className="text-sm text-book-dark/60">Click the camera icon to upload a profile image</p>
                 </div>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-book-dark font-medium mb-2">
                       Full Name
                     </label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       name="full_name"
-                      value={profile.full_name} 
+                      value={profile.full_name}
                       onChange={handleChange}
                       className="w-full p-3 rounded-md bg-white/80 border border-book-light focus:outline-none focus:ring-2 focus:ring-book-accent/50 transition-all"
                       placeholder="Your full name"
                     />
                   </div>
-                  
+
                   <div>
                     <label className="block text-book-dark font-medium mb-2">
                       Location
                     </label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       name="location"
-                      value={profile.location} 
+                      value={profile.location}
                       onChange={handleChange}
                       className="w-full p-3 rounded-md bg-white/80 border border-book-light focus:outline-none focus:ring-2 focus:ring-book-accent/50 transition-all"
                       placeholder="City, Country"
                     />
                   </div>
-                  
+
                   <div>
                     <label className="block text-book-dark font-medium mb-2">
                       Favorite Book Genre
                     </label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       name="favorite_genre"
-                      value={profile.favorite_genre} 
+                      value={profile.favorite_genre}
                       onChange={handleChange}
                       className="w-full p-3 rounded-md bg-white/80 border border-book-light focus:outline-none focus:ring-2 focus:ring-book-accent/50 transition-all"
                       placeholder="e.g. Science Fiction, Fantasy, etc."
                     />
                   </div>
-                  
+
                   <div>
                     <label className="block text-book-dark font-medium mb-2">
                       Website or Social Profile
                     </label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       name="website"
-                      value={profile.website} 
+                      value={profile.website}
                       onChange={handleChange}
                       className="w-full p-3 rounded-md bg-white/80 border border-book-light focus:outline-none focus:ring-2 focus:ring-book-accent/50 transition-all"
                       placeholder="https://example.com"
                     />
                   </div>
-                  
+
                   <div className="md:col-span-2">
                     <label className="block text-book-dark font-medium mb-2">
                       Bio
                     </label>
-                    <textarea 
+                    <textarea
                       name="bio"
-                      value={profile.bio} 
+                      value={profile.bio}
                       onChange={handleChange}
                       rows={4}
                       className="w-full p-3 rounded-md bg-white/80 border border-book-light focus:outline-none focus:ring-2 focus:ring-book-accent/50 transition-all resize-none"
@@ -349,10 +290,10 @@ const Profile = () => {
                     />
                   </div>
                 </div>
-                
+
                 <div className="mt-8 flex justify-end space-x-4">
-                  <Button 
-                    type="button" 
+                  <Button
+                    type="button"
                     variant="outline"
                     as="a"
                     href="/dashboard"
@@ -360,7 +301,7 @@ const Profile = () => {
                     <X className="mr-2 h-4 w-4" />
                     Cancel
                   </Button>
-                  <Button 
+                  <Button
                     type="submit"
                     variant="primary"
                     disabled={updating}
@@ -383,10 +324,10 @@ const Profile = () => {
           </div>
         </div>
       </main>
-      
+
       <Footer />
     </div>
   );
 };
 
-export default Profile; 
+export default Profile;

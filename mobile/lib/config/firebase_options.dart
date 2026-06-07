@@ -1,12 +1,5 @@
 // Firebase configuration for Flutter
-//
-// IMPORTANT: Replace these placeholder values with your actual Firebase config
-// from the Firebase Console -> Project Settings -> Your apps
-//
-// For iOS: Download GoogleService-Info.plist and place it in ios/Runner/
-// For Android: Download google-services.json and place it in android/app/
-//
-// Then run: flutterfire configure (or update values below manually)
+// Generated from Firebase Console config
 
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
@@ -38,52 +31,50 @@ class DefaultFirebaseOptions {
     }
   }
 
-  // TODO: Replace with your actual Firebase Web config
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'YOUR_WEB_API_KEY',
-    appId: 'YOUR_WEB_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    authDomain: 'YOUR_PROJECT_ID.firebaseapp.com',
-    storageBucket: 'YOUR_PROJECT_ID.appspot.com',
+    apiKey: 'AIzaSyBOeWd6_c_0ahGXvuiGQt2Wfd2GqMwArk0',
+    appId: '1:620020407459:web:ee8bba26d0ee8596fe3316',
+    messagingSenderId: '620020407459',
+    projectId: 'turtle-turning-pages',
+    authDomain: 'turtle-turning-pages.firebaseapp.com',
+    storageBucket: 'turtle-turning-pages.firebasestorage.app',
+    measurementId: 'G-2MP0V4D3XY',
   );
 
-  // TODO: Replace with your actual Firebase Android config
-  static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'YOUR_ANDROID_API_KEY',
-    appId: 'YOUR_ANDROID_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    storageBucket: 'YOUR_PROJECT_ID.appspot.com',
-  );
-
-  // TODO: Replace with your actual Firebase iOS config
+  // iOS configuration from GoogleService-Info.plist
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'YOUR_IOS_API_KEY',
-    appId: 'YOUR_IOS_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    storageBucket: 'YOUR_PROJECT_ID.appspot.com',
-    iosBundleId: 'com.turtleturningpages.app',
+    apiKey: 'AIzaSyAUHisoTS48HNXZV08i5uBs3S5kPEPef8I',
+    appId: '1:620020407459:ios:7a5d40ae2fca0e9dfe3316',
+    messagingSenderId: '620020407459',
+    projectId: 'turtle-turning-pages',
+    storageBucket: 'turtle-turning-pages.firebasestorage.app',
+    iosBundleId: 'com.turtleturningpages.turtleTurningPages',
   );
 
-  // TODO: Replace with your actual Firebase macOS config
+  static const FirebaseOptions android = FirebaseOptions(
+    apiKey: 'AIzaSyBOeWd6_c_0ahGXvuiGQt2Wfd2GqMwArk0',
+    appId: '1:620020407459:web:ee8bba26d0ee8596fe3316', // Replace with Android app ID
+    messagingSenderId: '620020407459',
+    projectId: 'turtle-turning-pages',
+    storageBucket: 'turtle-turning-pages.firebasestorage.app',
+  );
+
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'YOUR_MACOS_API_KEY',
-    appId: 'YOUR_MACOS_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    storageBucket: 'YOUR_PROJECT_ID.appspot.com',
+    apiKey: 'AIzaSyBOeWd6_c_0ahGXvuiGQt2Wfd2GqMwArk0',
+    appId: '1:620020407459:web:ee8bba26d0ee8596fe3316',
+    messagingSenderId: '620020407459',
+    projectId: 'turtle-turning-pages',
+    storageBucket: 'turtle-turning-pages.firebasestorage.app',
     iosBundleId: 'com.turtleturningpages.app',
   );
 
-  // TODO: Replace with your actual Firebase Windows config
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'YOUR_WINDOWS_API_KEY',
-    appId: 'YOUR_WINDOWS_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    authDomain: 'YOUR_PROJECT_ID.firebaseapp.com',
-    storageBucket: 'YOUR_PROJECT_ID.appspot.com',
+    apiKey: 'AIzaSyBOeWd6_c_0ahGXvuiGQt2Wfd2GqMwArk0',
+    appId: '1:620020407459:web:ee8bba26d0ee8596fe3316',
+    messagingSenderId: '620020407459',
+    projectId: 'turtle-turning-pages',
+    authDomain: 'turtle-turning-pages.firebaseapp.com',
+    storageBucket: 'turtle-turning-pages.firebasestorage.app',
+    measurementId: 'G-2MP0V4D3XY',
   );
 }

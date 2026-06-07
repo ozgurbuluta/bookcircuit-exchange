@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader2, MessageCircle, CheckCircle, XCircle, RefreshCw, User, Clock } from 'lucide-react';
 import { toast } from 'sonner';
-import { supabase } from '@/lib/supabase';
+import { updateTradeStatus } from '@/lib/tradeService';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -86,41 +86,29 @@ export function TradeDetailsCard({
   
   const handleAction = async (action: 'accept' | 'reject' | 'complete' | 'cancel') => {
     if (!user) return;
-    
+
     setLoading(action);
     try {
-      let result;
-      
-      switch (action) {
-        case 'accept':
-          result = await supabase.rpc('accept_trade', {
-            p_trade_id: trade.id,
-            p_message: message.trim() || null
-          });
-          break;
-        case 'reject':
-          result = await supabase.rpc('reject_trade', {
-            p_trade_id: trade.id,
-            p_reason: message.trim() || null
-          });
-          break;
-        case 'complete':
-          result = await supabase.rpc('complete_trade', {
-            p_trade_id: trade.id
-          });
-          break;
-        case 'cancel':
-          result = await supabase.rpc('cancel_trade', {
-            p_trade_id: trade.id,
-            p_reason: message.trim() || null
-          });
-          break;
+      // Map action to status
+      const statusMap: Record<string, 'accepted' | 'rejected' | 'completed' | 'cancelled'> = {
+        accept: 'accepted',
+        reject: 'rejected',
+        complete: 'completed',
+        cancel: 'cancelled',
+      };
+
+      const result = await updateTradeStatus(
+        trade.id,
+        statusMap[action],
+        message.trim() || undefined
+      );
+
+      if (!result.success) {
+        throw new Error(result.error);
       }
-      
-      if (result.error) throw result.error;
-      
+
       toast.success(`Trade ${action === 'accept' ? 'accepted' : action === 'reject' ? 'rejected' : action === 'complete' ? 'completed' : 'cancelled'} successfully!`);
-      
+
       if (onStatusChange) {
         onStatusChange();
       }

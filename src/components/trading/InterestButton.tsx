@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Heart, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { supabase } from '@/lib/supabase';
+import { checkBookInterest, markBookInterest, removeBookInterest } from '@/lib/bookService';
 import { useAuth } from '@/context/AuthContext';
 import {
   Dialog,
@@ -25,10 +25,10 @@ interface InterestButtonProps {
   onInterestRemoved?: () => void;
 }
 
-export const InterestButton = ({ 
-  bookId, 
-  ownerId, 
-  size = 'default', 
+export const InterestButton = ({
+  bookId,
+  ownerId,
+  size = 'default',
   className = '',
   onInterestMarked,
   onInterestRemoved
@@ -52,22 +52,11 @@ export const InterestButton = ({
       }
 
       try {
-        const { data, error } = await supabase
-          .from('book_interests')
-          .select('id, note')
-          .eq('user_id', user.id)
-          .eq('book_id', bookId)
-          .eq('status', 'active')
-          .single();
+        const result = await checkBookInterest(bookId, user.id);
 
-        if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows returned"
-          console.error('Error checking interest:', error);
-        }
-
-        if (data) {
+        if (result.interested && result.interestId) {
           setIsInterested(true);
-          setInterestId(data.id);
-          setNote(data.note || '');
+          setInterestId(result.interestId);
         } else {
           setIsInterested(false);
           setInterestId(null);
@@ -87,7 +76,7 @@ export const InterestButton = ({
     }
   }, [bookId, user]);
 
-  const markInterest = async () => {
+  const handleMarkInterest = async () => {
     if (!user) {
       toast.error('You must be logged in to mark interest in books');
       return;
@@ -100,19 +89,17 @@ export const InterestButton = ({
 
     setActionLoading(true);
     try {
-      const { data, error } = await supabase
-        .rpc('mark_book_interest', {
-          p_book_id: bookId,
-          p_note: note.trim() || null
-        });
+      const result = await markBookInterest(bookId, note.trim() || undefined);
 
-      if (error) throw error;
+      if (!result.success) {
+        throw new Error(result.error);
+      }
 
       toast.success('Interest marked successfully');
       setIsInterested(true);
-      setInterestId(data);
+      setInterestId(result.interestId || null);
       setIsDialogOpen(false);
-      
+
       if (onInterestMarked) {
         onInterestMarked();
       }
@@ -124,25 +111,24 @@ export const InterestButton = ({
     }
   };
 
-  const removeInterest = async () => {
+  const handleRemoveInterest = async () => {
     if (!user || !interestId) {
       return;
     }
 
     setActionLoading(true);
     try {
-      const { data, error } = await supabase
-        .rpc('remove_book_interest', {
-          p_interest_id: interestId
-        });
+      const result = await removeBookInterest(interestId);
 
-      if (error) throw error;
+      if (!result.success) {
+        throw new Error(result.error);
+      }
 
       toast.success('Interest removed successfully');
       setIsInterested(false);
       setInterestId(null);
       setNote('');
-      
+
       if (onInterestRemoved) {
         onInterestRemoved();
       }
@@ -189,7 +175,7 @@ export const InterestButton = ({
         size={size}
         variant="ghost"
         className={`relative text-red-500 hover:text-red-700 ${className}`}
-        onClick={removeInterest}
+        onClick={handleRemoveInterest}
         disabled={actionLoading}
       >
         {actionLoading ? (
@@ -231,7 +217,7 @@ export const InterestButton = ({
             Let the owner know you're interested in this book. You can optionally leave a note.
           </DialogDescription>
         </DialogHeader>
-        
+
         <div className="py-4">
           <Textarea
             placeholder="Optional note to the book owner (e.g., I've been looking for this title for ages!)"
@@ -240,13 +226,13 @@ export const InterestButton = ({
             className="w-full min-h-[100px]"
           />
         </div>
-        
+
         <DialogFooter>
           <DialogClose asChild>
             <Button variant="outline">Cancel</Button>
           </DialogClose>
-          <Button 
-            onClick={markInterest}
+          <Button
+            onClick={handleMarkInterest}
             disabled={actionLoading}
           >
             {actionLoading ? (
@@ -262,4 +248,4 @@ export const InterestButton = ({
       </DialogContent>
     </Dialog>
   );
-}; 
+};

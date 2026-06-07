@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { BookOpen, Info, ArrowLeft } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { getBookById } from '@/lib/bookService';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { useAuth } from '@/context/AuthContext';
 
 /**
  * ChatHeader component displays information about the current conversation
@@ -14,27 +13,22 @@ import { useAuth } from '@/context/AuthContext';
 const ChatHeader = ({ conversation, onBack, bookId }) => {
   const [showBookDetails, setShowBookDetails] = useState(false);
   const [bookDetails, setBookDetails] = useState(null);
-  const { supabase: authSupabase } = useAuth();
 
   useEffect(() => {
     // Fetch associated book details if there's a book_id
     const fetchBookDetails = async () => {
       if (!conversation?.book_id) return;
-      
+
       try {
-        const { data, error } = await supabase
-          .from('books')
-          .select('id, title, cover_img_url')
-          .eq('id', conversation.book_id)
-          .single();
-          
-        if (error) throw error;
-        setBookDetails(data);
+        const book = await getBookById(conversation.book_id);
+        if (book) {
+          setBookDetails(book);
+        }
       } catch (err) {
         console.error('Error fetching book details:', err);
       }
     };
-    
+
     fetchBookDetails();
   }, [conversation?.book_id]);
 
@@ -45,7 +39,7 @@ const ChatHeader = ({ conversation, onBack, bookId }) => {
       <button onClick={onBack} className="mr-3 md:hidden text-book-dark">
         <ArrowLeft className="h-6 w-6" />
       </button>
-      
+
       {/* Avatar or Placeholder */}
       {conversation.avatar ? (
         <img src={conversation.avatar} alt={conversation.name} className="w-10 h-10 rounded-full mr-6 object-cover" />
@@ -66,12 +60,12 @@ const ChatHeader = ({ conversation, onBack, bookId }) => {
           <Info className="h-5 w-5 text-book-leather" />
         </button>
       )}
-      
+
       {/* Book Details Dialog - remains the same */}
       {/* ... Dialog JSX ... */}
-      
+
     </div>
   );
 };
 
-export default ChatHeader; 
+export default ChatHeader;

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { supabase } from '@/lib/supabase';
+import { getUserTrades, getTradeById } from '@/lib/tradeService';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -17,20 +17,19 @@ export default function TradesPage() {
   const navigate = useNavigate();
   const params = useParams();
   const tradeId = params.tradeId;
-  
+
   const [activeTab, setActiveTab] = useState('all');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [trades, setTrades] = useState<TradeDetails[]>([]);
   const [selectedTrade, setSelectedTrade] = useState<TradeDetails | null>(null);
-  
+
   // Filter trades based on the active tab
   const filteredTrades = useMemo(() => {
     if (activeTab === 'all') {
       return trades;
     }
     if (activeTab === 'pending') {
-      // Include both 'pending' and 'request_pending' in the Pending tab
       return trades.filter(t => t.status === 'pending' || t.status === 'request_pending' as any);
     }
     if (activeTab === 'accepted') {
@@ -44,47 +43,42 @@ export default function TradesPage() {
     }
     return trades;
   }, [trades, activeTab]);
-  
+
   // Fetch all trades
   const fetchTrades = async (showRefreshToast = false) => {
     if (!user) return;
-    
+
     if (showRefreshToast) {
       setRefreshing(true);
     } else {
       setLoading(true);
     }
-    
-    try {
-      const { data, error } = await supabase
-        .rpc('get_user_trades', { 
-          p_status_filter: activeTab === 'all' ? null : activeTab
-        });
-      
-      if (error) throw error;
 
-      // Map the data from the RPC function to the expected TradeDetails format
-      const formattedTrades: TradeDetails[] = (data || []).map(trade => ({
-        id: trade.trade_id,
+    try {
+      const data = await getUserTrades();
+
+      // Map the data from Firebase to the expected TradeDetails format
+      const formattedTrades: TradeDetails[] = data.map(trade => ({
+        id: trade.id,
         status: trade.status as any,
         created_at: trade.created_at,
         updated_at: trade.updated_at,
         initiator_id: trade.initiator_id,
-        initiator_name: trade.initiator_name,
-        initiator_avatar: trade.initiator_avatar,
+        initiator_name: trade.initiator?.full_name || 'Unknown',
+        initiator_avatar: trade.initiator?.avatar_url,
         recipient_id: trade.recipient_id,
-        recipient_name: trade.recipient_name,
-        recipient_avatar: trade.recipient_avatar,
-        initiator_message: trade.notes,
-        recipient_message: '',
-        initiator_items: [], // We'll have to extract these from requested_books/offered_books
-        recipient_items: [], // We'll have to extract these from requested_books/offered_books
+        recipient_name: trade.recipient?.full_name || 'Unknown',
+        recipient_avatar: trade.recipient?.avatar_url,
+        initiator_message: trade.initiator_message,
+        recipient_message: trade.recipient_message,
+        initiator_items: trade.items?.filter(item => item.owner_id === trade.initiator_id) || [],
+        recipient_items: trade.items?.filter(item => item.owner_id === trade.recipient_id) || [],
         is_direct_request: trade.trade_type === 'direct_request',
-        is_counteroffered: trade.is_counteroffer || false
+        is_counteroffered: false
       }));
-      
+
       setTrades(formattedTrades);
-      
+
       // If a tradeId is provided, select that trade
       if (tradeId) {
         const foundTrade = formattedTrades.find(t => t.id === tradeId);
@@ -99,7 +93,7 @@ export default function TradesPage() {
         // Select the first trade by default
         setSelectedTrade(formattedTrades[0]);
       }
-      
+
       if (showRefreshToast) {
         toast.success('Trades refreshed');
       }
@@ -111,30 +105,27 @@ export default function TradesPage() {
       setRefreshing(false);
     }
   };
-  
+
   // Initial load
   useEffect(() => {
     if (user) {
       fetchTrades();
     } else {
-      // If no user, and ProtectedRoute somehow allowed rendering,
-      // ensure we are not stuck in a loading state.
-      // This case should ideally be handled by ProtectedRoute.
       setLoading(false);
     }
   }, [user]);
-  
+
   // Handle trade selection
   const handleTradeSelect = (trade: TradeDetails) => {
     setSelectedTrade(trade);
     navigate(`/trades/${trade.id}`);
   };
-  
+
   // Handle trade status change
   const handleTradeStatusChange = () => {
     fetchTrades(true);
   };
-  
+
   if (!user) {
     return (
       <div className="container max-w-6xl py-8">
@@ -148,7 +139,7 @@ export default function TradesPage() {
       </div>
     );
   }
-  
+
   return (
     <div className="container max-w-6xl py-8">
       <div className="flex items-center justify-between mb-6">
@@ -161,7 +152,7 @@ export default function TradesPage() {
           </Link>
           <h1 className="text-2xl font-bold">Trades</h1>
         </div>
-        
+
         <Button
           variant="outline"
           size="sm"
@@ -176,7 +167,7 @@ export default function TradesPage() {
           Refresh
         </Button>
       </div>
-      
+
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="col-span-1">
@@ -209,7 +200,7 @@ export default function TradesPage() {
                 <TabsTrigger value="other">Other</TabsTrigger>
               </TabsList>
             </Tabs>
-            
+
             <ScrollArea className="h-[calc(100vh-220px)] border rounded-md">
               {filteredTrades.length === 0 ? (
                 <div className="p-4 text-center text-muted-foreground">
@@ -236,9 +227,8 @@ export default function TradesPage() {
                               {new Date(trade.created_at).toLocaleDateString()}
                             </p>
                           </div>
-                          
+
                           <div>
-                            {/* Handle pending status display */}
                             {trade.status === 'pending' && (
                               <span className="text-xs inline-flex items-center rounded-full bg-yellow-100 px-2.5 py-0.5 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300">
                                 Pending
@@ -274,7 +264,7 @@ export default function TradesPage() {
               )}
             </ScrollArea>
           </div>
-          
+
           {/* Trade details panel */}
           <div className="col-span-1 md:col-span-2">
             {selectedTrade ? (
@@ -294,4 +284,4 @@ export default function TradesPage() {
       )}
     </div>
   );
-} 
+}

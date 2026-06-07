@@ -155,11 +155,12 @@ class FirebaseService {
     final doc = await db.collection('books').doc(bookId).get();
     if (!doc.exists) return null;
 
-    final book = _docToBook(doc);
+    var book = _docToBook(doc);
 
     // Fetch owner profile
     if (book.userId.isNotEmpty) {
-      book.owner = await getProfile(book.userId);
+      final owner = await getProfile(book.userId);
+      book = book.copyWith(owner: owner);
     }
 
     return book;

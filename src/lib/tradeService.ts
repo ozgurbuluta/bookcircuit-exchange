@@ -310,3 +310,96 @@ export const getPendingTradesCount = async (): Promise<number> => {
     return 0;
   }
 };
+
+// Notification type
+export interface TradeNotification {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  trade_id?: string;
+  book_id?: string;
+  user_id?: string;
+  user_name?: string;
+  user_avatar?: string;
+  book_title?: string;
+  created_at: string;
+  read: boolean;
+}
+
+// Get user notifications
+export const getUserNotifications = async (limitCount: number = 10): Promise<TradeNotification[]> => {
+  try {
+    const user = auth.currentUser;
+    if (!user) return [];
+
+    const q = query(
+      collection(db, 'notifications'),
+      where('userId', '==', user.uid),
+      orderBy('createdAt', 'desc')
+    );
+
+    const snapshot = await getDocs(q);
+
+    const notifications: TradeNotification[] = await Promise.all(
+      snapshot.docs.slice(0, limitCount).map(async (docSnap) => {
+        const data = docSnap.data();
+
+        return {
+          id: docSnap.id,
+          type: data.type || 'notification',
+          title: data.title || 'Notification',
+          description: data.message || '',
+          trade_id: data.tradeId,
+          book_id: data.bookId,
+          user_id: data.fromUserId,
+          user_name: data.fromUserName,
+          book_title: data.bookTitle,
+          created_at: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+          read: data.read || false,
+        };
+      })
+    );
+
+    return notifications;
+  } catch (error) {
+    console.error('Error getting notifications:', error);
+    return [];
+  }
+};
+
+// Mark notification as read
+export const markNotificationAsRead = async (notificationId: string): Promise<void> => {
+  try {
+    await updateDoc(doc(db, 'notifications', notificationId), {
+      read: true,
+    });
+  } catch (error) {
+    console.error('Error marking notification as read:', error);
+  }
+};
+
+// Mark all notifications as read
+export const markAllNotificationsAsRead = async (): Promise<void> => {
+  try {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const q = query(
+      collection(db, 'notifications'),
+      where('userId', '==', user.uid),
+      where('read', '==', false)
+    );
+
+    const snapshot = await getDocs(q);
+    const batch = writeBatch(db);
+
+    snapshot.docs.forEach((docSnap) => {
+      batch.update(docSnap.ref, { read: true });
+    });
+
+    await batch.commit();
+  } catch (error) {
+    console.error('Error marking all notifications as read:', error);
+  }
+};

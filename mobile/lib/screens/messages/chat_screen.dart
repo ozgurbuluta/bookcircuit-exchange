@@ -73,7 +73,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final chatState = ref.watch(chatProvider(widget.conversationId));
-    final currentUserId = ref.watch(currentUserProvider)?.id ?? '';
+    final currentUserId = ref.watch(currentUserProvider)?.uid ?? '';
     final bookAsync = widget.bookId != null
         ? ref.watch(bookProvider(widget.bookId!))
         : null;

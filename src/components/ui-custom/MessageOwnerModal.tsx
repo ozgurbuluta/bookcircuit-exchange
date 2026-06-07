@@ -3,16 +3,16 @@ import { Book } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { supabase } from '@/lib/supabase';
+import { getOrCreateConversation, sendMessage } from '@/lib/conversationService';
 import { toast } from 'sonner';
-import { X, Send } from 'lucide-react';
+import { Send } from 'lucide-react';
 
 interface MessageOwnerModalProps {
   book: Book;
   ownerName: string;
   isOpen: boolean;
   onClose: () => void;
-  onSendComplete: (conversationId: string) => void; // Optional: Callback after sending
+  onSendComplete: (conversationId: string) => void;
 }
 
 export const MessageOwnerModal: React.FC<MessageOwnerModalProps> = ({
@@ -37,20 +37,25 @@ export const MessageOwnerModal: React.FC<MessageOwnerModalProps> = ({
 
     setIsSending(true);
     try {
-      const { data, error } = await supabase
-        .rpc('start_conversation', {
-          other_user_id: book.user_id,
-          initial_message: message.trim(),
-          book_id: book.id
-        });
+      // Create or get existing conversation
+      const result = await getOrCreateConversation(book.user_id, book.id);
 
-      if (error) throw error;
+      if (!result.success || !result.conversationId) {
+        throw new Error(result.error || 'Failed to create conversation');
+      }
+
+      // Send the message
+      const messageResult = await sendMessage(result.conversationId, message.trim(), book.id);
+
+      if (!messageResult.success) {
+        throw new Error(messageResult.error || 'Failed to send message');
+      }
 
       toast.success('Message sent successfully!');
       setMessage(''); // Clear message input
       onClose(); // Close the modal
-      if (onSendComplete && data) {
-        onSendComplete(data); // Pass conversation ID back if needed
+      if (onSendComplete) {
+        onSendComplete(result.conversationId);
       }
     } catch (error: any) {
       console.error('Error sending message:', error);
@@ -60,7 +65,6 @@ export const MessageOwnerModal: React.FC<MessageOwnerModalProps> = ({
     }
   };
 
-  // Use Dialog component for modal structure
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-[425px]">
@@ -79,7 +83,7 @@ export const MessageOwnerModal: React.FC<MessageOwnerModalProps> = ({
             </div>
           </div>
         </DialogHeader>
-        
+
         <div className="grid gap-4 py-4">
           <Textarea
             placeholder={`Type your message to ${ownerName} about "${book.title}"...`}
@@ -89,7 +93,7 @@ export const MessageOwnerModal: React.FC<MessageOwnerModalProps> = ({
             disabled={isSending}
           />
         </div>
-        
+
         <DialogFooter>
            <DialogClose asChild>
               <Button type="button" variant="outline" onClick={onClose} disabled={isSending}>
@@ -104,4 +108,4 @@ export const MessageOwnerModal: React.FC<MessageOwnerModalProps> = ({
       </DialogContent>
     </Dialog>
   );
-}; 
+};

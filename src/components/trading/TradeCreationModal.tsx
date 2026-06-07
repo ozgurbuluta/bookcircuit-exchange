@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader2, X, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
-import { supabase } from '@/lib/supabase';
+import { getUserBooks } from '@/lib/bookService';
+import { createTrade } from '@/lib/tradeService';
 import { Book } from '@/lib/types';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -60,12 +61,10 @@ export function TradeCreationModal({
     const fetchMyBooks = async () => {
       setLoadingMyBooks(true);
       try {
-        const { data, error } = await supabase.rpc('get_user_available_books', {
-          p_user_id: user.id,
-        });
-
-        if (error) throw error;
-        setMyBooks(data || []);
+        const books = await getUserBooks(user.id);
+        // Filter to only available books
+        const availableBooks = books.filter(book => book.status === 'available');
+        setMyBooks(availableBooks);
       } catch (error) {
         console.error('Error fetching user books:', error);
         toast.error('Failed to load your books');
@@ -84,25 +83,23 @@ export function TradeCreationModal({
     const fetchPartnerBooks = async () => {
       setLoadingPartnerBooks(true);
       try {
-        const { data, error } = await supabase.rpc('get_user_available_books', {
-          p_user_id: partner.id,
-        });
+        const books = await getUserBooks(partner.id);
+        // Filter to only available books
+        const availableBooks = books.filter(book => book.status === 'available');
 
-        if (error) throw error;
-        
         // Convert Book[] to TradeItem[]
-        const tradeItems: TradeItem[] = (data || []).map(book => ({
-          id: book.id, // Using book.id as a temporary id
+        const tradeItems: TradeItem[] = availableBooks.map(book => ({
+          id: book.id,
           book_id: book.id,
           title: book.title,
           author: book.author,
-          cover_url: book.cover_url,
+          cover_url: book.cover_img_url,
           condition: book.condition,
           owner_id: partner.id,
           owner_name: partner.name,
           item_type: 'book',
         }));
-        
+
         setPartnerBooks(tradeItems);
       } catch (error) {
         console.error('Error fetching partner books:', error);
@@ -121,14 +118,16 @@ export function TradeCreationModal({
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.rpc('create_trade', {
-        p_partner_id: partner.id,
-        p_my_book_ids: selectedMyBookIds,
-        p_their_book_ids: selectedPartnerBookIds,
-        p_message: message.trim() || null,
-      });
+      const result = await createTrade(
+        partner.id,
+        selectedMyBookIds,
+        selectedPartnerBookIds,
+        message.trim() || undefined
+      );
 
-      if (error) throw error;
+      if (!result.success) {
+        throw new Error(result.error);
+      }
 
       toast.success('Trade proposal created successfully!');
       onOpenChange(false);
@@ -260,4 +259,4 @@ export function TradeCreationModal({
       </DialogContent>
     </Dialog>
   );
-} 
+}

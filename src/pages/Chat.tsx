@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { supabase } from '@/lib/supabase';
+import { getConversationById } from '@/lib/conversationService';
 import ChatContainer from '../components/chat/ChatContainer';
 import Navbar from '@/components/ui-custom/Navbar';
 import Footer from '@/components/ui-custom/Footer';
@@ -14,7 +14,7 @@ const Chat = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [hasAccess, setHasAccess] = useState(false);
 
   useEffect(() => {
@@ -33,18 +33,10 @@ const Chat = () => {
           return;
         }
 
-        // Check if user is a participant in this conversation
-        const { data, error } = await supabase
-          .from('conversation_participants')
-          .select('*')
-          .eq('conversation_id', conversationId)
-          .eq('user_id', user.id);
-
-        if (error) throw error;
-
-        // User has access if they are a participant
-        setHasAccess(data && data.length > 0);
-      } catch (err) {
+        // Check if user has access to this conversation
+        const conversation = await getConversationById(conversationId);
+        setHasAccess(conversation !== null);
+      } catch (err: any) {
         console.error('Error checking conversation access:', err);
         setError(err.message);
       } finally {
@@ -90,9 +82,9 @@ const Chat = () => {
       <Helmet>
         <title>Chat | Turtle Turning Pages</title>
       </Helmet>
-      
+
       <Navbar />
-      
+
       <main className="flex-grow pt-28 pb-20">
         <div className="container mx-auto px-4 md:px-6">
           <div className="max-w-6xl mx-auto bg-white rounded-lg shadow-md overflow-hidden border border-book-leather/10">
@@ -106,15 +98,15 @@ const Chat = () => {
               </Button>
               <h1 className="text-2xl font-bold text-book-leather">Messages</h1>
             </div>
-            
+
             <ChatContainer userId={user?.id} selectedConversationId={conversationId} />
           </div>
         </div>
       </main>
-      
+
       <Footer />
     </div>
   );
 };
 
-export default Chat; 
+export default Chat;

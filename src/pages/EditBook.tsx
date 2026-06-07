@@ -6,7 +6,7 @@ import * as z from 'zod';
 import { Loader2, Save, ArrowLeft, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { supabase } from '../lib/supabase';
+import { auth } from '../lib/firebase';
 import { getBookById, updateBook } from '../lib/bookService';
 import { BookCondition, LocationData, Book } from '../lib/types';
 
@@ -80,15 +80,14 @@ export default function EditBook() {
 
   // Check if user is authenticated
   useEffect(() => {
-    const getUser = async () => {
-      const { data } = await supabase.auth.getUser();
-      if (data?.user) {
-        setUser(data.user);
+    const unsubscribe = auth.onAuthStateChanged((currentUser) => {
+      if (currentUser) {
+        setUser(currentUser);
       } else {
         navigate('/signin');
       }
-    };
-    getUser();
+    });
+    return () => unsubscribe();
   }, [navigate]);
   
   // Load book data

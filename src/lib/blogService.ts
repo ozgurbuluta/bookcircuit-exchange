@@ -1,20 +1,23 @@
-import { supabase } from './supabase';
+import { db } from './firebase';
+import { collection, query, orderBy, limit as limitFn, getDocs, where } from 'firebase/firestore';
 import { BlogPost } from './types';
 
 // Get all blog posts
 export const getAllBlogPosts = async (): Promise<BlogPost[]> => {
   try {
-    const { data, error } = await supabase
-      .from('blog_posts')
-      .select('*')
-      .order('published_at', { ascending: false });
-      
-    if (error) {
-      console.error('Error fetching blog posts:', error);
-      throw error;
-    }
-    
-    return processPostsImages(data as BlogPost[]);
+    const q = query(
+      collection(db, 'blogPosts'),
+      orderBy('publishedAt', 'desc')
+    );
+
+    const snapshot = await getDocs(q);
+    const posts = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      published_at: doc.data().publishedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+    })) as BlogPost[];
+
+    return processPostsImages(posts);
   } catch (error) {
     console.error('Error fetching blog posts:', error);
     return [];
@@ -22,20 +25,22 @@ export const getAllBlogPosts = async (): Promise<BlogPost[]> => {
 };
 
 // Get featured blog posts (most recent ones)
-export const getFeaturedBlogPosts = async (limit: number = 3): Promise<BlogPost[]> => {
+export const getFeaturedBlogPosts = async (count: number = 3): Promise<BlogPost[]> => {
   try {
-    const { data, error } = await supabase
-      .from('blog_posts')
-      .select('*')
-      .order('published_at', { ascending: false })
-      .limit(limit);
-      
-    if (error) {
-      console.error('Error fetching featured blog posts:', error);
-      throw error;
-    }
-    
-    return processPostsImages(data as BlogPost[]);
+    const q = query(
+      collection(db, 'blogPosts'),
+      orderBy('publishedAt', 'desc'),
+      limitFn(count)
+    );
+
+    const snapshot = await getDocs(q);
+    const posts = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      published_at: doc.data().publishedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+    })) as BlogPost[];
+
+    return processPostsImages(posts);
   } catch (error) {
     console.error('Error fetching featured blog posts:', error);
     return [];
@@ -51,16 +56,16 @@ const processPostsImages = (posts: BlogPost[]): BlogPost[] => {
         // Make sure Unsplash URLs have the right parameters
         if (post.featured_image_url.includes('unsplash.com')) {
           const url = new URL(post.featured_image_url);
-          
+
           // Ensure we have auto=format and proper quality
           if (!url.searchParams.has('auto')) {
             url.searchParams.set('auto', 'format');
           }
-          
+
           if (!url.searchParams.has('q')) {
             url.searchParams.set('q', '80');
           }
-          
+
           // Return the improved URL
           post.featured_image_url = url.toString();
         }
@@ -68,7 +73,7 @@ const processPostsImages = (posts: BlogPost[]): BlogPost[] => {
         console.warn('Failed to process image URL for post:', post.title);
       }
     }
-    
+
     return post;
   });
 };
@@ -76,18 +81,25 @@ const processPostsImages = (posts: BlogPost[]): BlogPost[] => {
 // Get a blog post by slug
 export const getBlogPostBySlug = async (slug: string): Promise<BlogPost | null> => {
   try {
-    const { data, error } = await supabase
-      .from('blog_posts')
-      .select('*')
-      .eq('slug', slug)
-      .single();
-      
-    if (error) {
-      console.error(`Error fetching blog post with slug ${slug}:`, error);
-      throw error;
+    const q = query(
+      collection(db, 'blogPosts'),
+      where('slug', '==', slug)
+    );
+
+    const snapshot = await getDocs(q);
+
+    if (snapshot.empty) {
+      return null;
     }
-    
-    const posts = processPostsImages([data as BlogPost]);
+
+    const doc = snapshot.docs[0];
+    const post = {
+      id: doc.id,
+      ...doc.data(),
+      published_at: doc.data().publishedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+    } as BlogPost;
+
+    const posts = processPostsImages([post]);
     return posts[0];
   } catch (error) {
     console.error(`Error fetching blog post with slug ${slug}:`, error);
@@ -125,4 +137,4 @@ export const markdownToHtml = (markdown: string): string => {
     .replace(/\[(.*?)\]\((.*?)\)/gim, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
     // Line breaks
     .replace(/\n/gim, '<br />');
-}; 
+};

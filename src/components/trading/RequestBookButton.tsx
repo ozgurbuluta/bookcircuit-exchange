@@ -3,7 +3,7 @@ import { BookPlus, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/lib/supabase';
+import { requestBook } from '@/lib/bookService';
 import { useAuth } from '@/context/AuthContext';
 import {
   Dialog,
@@ -15,7 +15,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from '@/components/ui/textarea';
-import { Book } from '@/lib/types';
 
 interface RequestBookButtonProps {
   bookId: string;
@@ -28,12 +27,12 @@ interface RequestBookButtonProps {
   onRequestSent?: () => void;
 }
 
-export const RequestBookButton = ({ 
-  bookId, 
+export const RequestBookButton = ({
+  bookId,
   bookTitle,
-  ownerId, 
-  variant = 'default', 
-  size = 'default', 
+  ownerId,
+  variant = 'default',
+  size = 'default',
   className = '',
   fullWidth = false,
   onRequestSent
@@ -43,7 +42,6 @@ export const RequestBookButton = ({
   const [loading, setLoading] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [message, setMessage] = useState('');
-  const [isEligible, setIsEligible] = useState<boolean | null>(null);
 
   const isOwnBook = user?.id === ownerId;
 
@@ -59,56 +57,24 @@ export const RequestBookButton = ({
     }
 
     setLoading(true);
-    console.log(`[RequestBookButton] Initiating request. User ID: ${user.id}, Book ID: ${bookId}, Book Owner ID: ${ownerId}`);
 
     try {
-      // First check if the book is available
-      const { data: bookData, error: bookError } = await supabase
-        .from('books')
-        .select('status')
-        .eq('id', bookId)
-        .single();
-      
-      if (bookError) {
-        console.error('[RequestBookButton] Error checking book status:', bookError);
-        throw new Error('Could not verify book availability');
-      }
-      
-      if (bookData.status !== 'available') {
-        throw new Error(`Book is not available (current status: ${bookData.status})`);
-      }
-      
-      // Proceed with creating the request
-      console.log(`[RequestBookButton] Calling RPC 'create_direct_request' with params:`, { 
-        p_book_id: bookId
-        // p_initiator_id is inferred from auth.uid() in the SQL function
-        // p_recipient_id is derived from p_book_id in the SQL function
-        // p_note is optional and defaults to NULL in the SQL function
-      });
-      const { data, error } = await supabase.rpc('create_direct_request', {
-        p_book_id: bookId
-        // Removed p_recipient_id as it's not in the SQL function signature from 10_fix_trade_history_columns.sql
-        // p_note: message.trim() || null, // If a message/note feature is to be used, uncomment and implement UI
-      });
+      const result = await requestBook(bookId, user.id);
 
-      console.log(`[RequestBookButton] RPC Response - Data: ${JSON.stringify(data)}, Error: ${JSON.stringify(error)}`);
-
-      if (error) {
-        console.error('[RequestBookButton] Error creating direct request:', error);
-        toast.error(error.message || 'Failed to request book');
-      } else if (data) {
-        const tradeId = data as string;
-        toast.success('Book requested successfully!');
-        setIsDialogOpen(false);
-        
-        if (onRequestSent) {
-          onRequestSent();
-        }
-        
-        navigate(`/trades/${tradeId}`);
-      } else {
-        toast.error('An unknown error occurred: No trade ID returned.');
+      if (!result.success) {
+        toast.error(result.error || 'Failed to request book');
+        return;
       }
+
+      toast.success('Book requested successfully!');
+      setIsDialogOpen(false);
+
+      if (onRequestSent) {
+        onRequestSent();
+      }
+
+      // Navigate to trades page
+      navigate('/trades');
     } catch (error: any) {
       console.error('[RequestBookButton] Exception during request book:', error);
       toast.error(error.message || 'An unexpected error occurred.');
@@ -140,7 +106,7 @@ export const RequestBookButton = ({
             This will notify the book owner that you're interested in their book. They'll be able to respond by selecting books they want from your collection.
           </DialogDescription>
         </DialogHeader>
-        
+
         <div className="py-4">
           <Textarea
             placeholder="Optional message to the book owner (e.g., I'd love to read this book!)"
@@ -149,16 +115,16 @@ export const RequestBookButton = ({
             className="w-full min-h-[100px]"
           />
         </div>
-        
+
         <DialogFooter>
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={() => setIsDialogOpen(false)}
             disabled={loading}
           >
             Cancel
           </Button>
-          <Button 
+          <Button
             onClick={handleRequestBook}
             disabled={loading}
           >
@@ -175,4 +141,4 @@ export const RequestBookButton = ({
       </DialogContent>
     </Dialog>
   );
-}; 
+};

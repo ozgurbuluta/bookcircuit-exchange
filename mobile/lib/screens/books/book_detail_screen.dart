@@ -173,7 +173,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final bookAsync = ref.watch(bookProvider(widget.bookId));
-    final currentUserId = ref.watch(currentUserProvider)?.id;
+    final currentUserId = ref.watch(currentUserProvider)?.uid;
 
     return Scaffold(
       backgroundColor: AppColors.paper,

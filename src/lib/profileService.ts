@@ -3,8 +3,13 @@ import { db, auth } from './firebase';
 import {
   doc,
   getDoc,
+  getDocs,
   updateDoc,
   serverTimestamp,
+  collection,
+  query,
+  where,
+  documentId,
 } from 'firebase/firestore';
 
 // Helper to convert Firestore document to Profile
@@ -51,6 +56,36 @@ export const getCurrentProfile = async (): Promise<Profile | null> => {
   const user = auth.currentUser;
   if (!user) return null;
   return getProfileById(user.uid);
+};
+
+// Get multiple profiles by user IDs
+export const getProfilesByIds = async (userIds: string[]): Promise<Record<string, Profile>> => {
+  try {
+    if (userIds.length === 0) return {};
+
+    // Firestore limits 'in' queries to 30 items
+    const profileMap: Record<string, Profile> = {};
+    const chunks = [];
+    for (let i = 0; i < userIds.length; i += 30) {
+      chunks.push(userIds.slice(i, i + 30));
+    }
+
+    for (const chunk of chunks) {
+      const q = query(
+        collection(db, 'users'),
+        where(documentId(), 'in', chunk)
+      );
+      const snapshot = await getDocs(q);
+      snapshot.docs.forEach(docSnap => {
+        profileMap[docSnap.id] = docToProfile(docSnap);
+      });
+    }
+
+    return profileMap;
+  } catch (error) {
+    console.error('Error getting profiles:', error);
+    return {};
+  }
 };
 
 // Update profile

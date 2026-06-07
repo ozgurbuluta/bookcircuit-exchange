@@ -627,6 +627,110 @@ export const getUserRequestedBooks = async (userId: string): Promise<BookWithReq
   }
 };
 
+// Check if user has interest in a book
+export const checkBookInterest = async (
+  bookId: string,
+  userId: string
+): Promise<{ interested: boolean; interestId?: string }> => {
+  try {
+    const q = query(
+      collection(db, 'bookInterests'),
+      where('bookId', '==', bookId),
+      where('userId', '==', userId),
+      where('status', '==', 'active')
+    );
+
+    const snapshot = await getDocs(q);
+
+    if (!snapshot.empty) {
+      return { interested: true, interestId: snapshot.docs[0].id };
+    }
+
+    return { interested: false };
+  } catch (error) {
+    console.error('Error checking book interest:', error);
+    return { interested: false };
+  }
+};
+
+// Mark interest in a book
+export const markBookInterest = async (
+  bookId: string,
+  note?: string
+): Promise<{ success: boolean; interestId?: string; error?: string }> => {
+  try {
+    const user = auth.currentUser;
+    if (!user) {
+      return { success: false, error: 'Not authenticated' };
+    }
+
+    // Check if already interested
+    const existing = await checkBookInterest(bookId, user.uid);
+    if (existing.interested) {
+      return { success: false, error: 'Already interested in this book' };
+    }
+
+    // Create interest
+    const interestRef = await addDoc(collection(db, 'bookInterests'), {
+      bookId,
+      userId: user.uid,
+      note: note || null,
+      status: 'active',
+      createdAt: serverTimestamp(),
+    });
+
+    // Get book owner to send notification
+    const bookDoc = await getDoc(doc(db, 'books', bookId));
+    if (bookDoc.exists()) {
+      const bookData = bookDoc.data();
+      await addDoc(collection(db, 'notifications'), {
+        userId: bookData.userId,
+        type: 'interest_marked',
+        message: 'Someone marked interest in your book',
+        relatedId: bookId,
+        read: false,
+        createdAt: serverTimestamp(),
+      });
+    }
+
+    return { success: true, interestId: interestRef.id };
+  } catch (error) {
+    console.error('Error marking interest:', error);
+    return { success: false, error: 'Failed to mark interest' };
+  }
+};
+
+// Remove interest from a book
+export const removeBookInterest = async (
+  interestId: string
+): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const user = auth.currentUser;
+    if (!user) {
+      return { success: false, error: 'Not authenticated' };
+    }
+
+    const interestDoc = await getDoc(doc(db, 'bookInterests', interestId));
+    if (!interestDoc.exists()) {
+      return { success: false, error: 'Interest not found' };
+    }
+
+    if (interestDoc.data().userId !== user.uid) {
+      return { success: false, error: 'Not authorized' };
+    }
+
+    await updateDoc(doc(db, 'bookInterests', interestId), {
+      status: 'removed',
+      updatedAt: serverTimestamp(),
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error removing interest:', error);
+    return { success: false, error: 'Failed to remove interest' };
+  }
+};
+
 // Test function for debugging
 export const testGeographyColumn = async (): Promise<{ success: boolean; message: string }> => {
   try {

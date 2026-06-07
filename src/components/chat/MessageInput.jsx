@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, BookOpen } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { getConversationById } from '@/lib/conversationService';
+import { getBookById } from '@/lib/bookService';
 
 /**
  * MessageInput component for sending new messages
@@ -12,50 +13,28 @@ const MessageInput = ({ onSendMessage, conversationId }) => {
   const [message, setMessage] = useState('');
   const [bookDetails, setBookDetails] = useState(null);
   const [loadingBook, setLoadingBook] = useState(false);
-  const [messagesCount, setMessagesCount] = useState(0);
+  const [isFirstMessage, setIsFirstMessage] = useState(false);
   const textareaRef = useRef(null);
 
   // Check if this is the first message in the conversation
   useEffect(() => {
     const fetchConversationDetails = async () => {
       if (!conversationId) return;
-      
+
       try {
-        // Get conversation details to check for book_id
-        const { data: conversation, error: convError } = await supabase
-          .from('conversations')
-          .select('book_id')
-          .eq('id', conversationId)
-          .single();
-          
-        if (convError) throw convError;
-        
-        // Get messages count
-        const { count, error: countError } = await supabase
-          .from('messages')
-          .select('id', { count: 'exact' })
-          .eq('conversation_id', conversationId);
-          
-        if (countError) throw countError;
-        
-        setMessagesCount(count || 0);
-        
-        // If there's a book_id, fetch book details
+        const conversation = await getConversationById(conversationId);
+
         if (conversation?.book_id) {
           setLoadingBook(true);
-          const { data: book, error: bookError } = await supabase
-            .from('books')
-            .select('id, title, author, cover_img_url')
-            .eq('id', conversation.book_id)
-            .single();
-            
-          if (bookError) throw bookError;
-          
-          setBookDetails(book);
-          
-          // If this is the first message, suggest a template
-          if (count === 0) {
-            setMessage(`Hi, I'm interested in your book "${book.title}"! Is it still available?`);
+          const book = await getBookById(conversation.book_id);
+
+          if (book) {
+            setBookDetails(book);
+            // Check if no messages yet (simplified - just show template for new conversations)
+            if (!conversation.last_message) {
+              setIsFirstMessage(true);
+              setMessage(`Hi, I'm interested in your book "${book.title}"! Is it still available?`);
+            }
           }
         }
       } catch (err) {
@@ -64,7 +43,7 @@ const MessageInput = ({ onSendMessage, conversationId }) => {
         setLoadingBook(false);
       }
     };
-    
+
     fetchConversationDetails();
   }, [conversationId]);
 
@@ -93,6 +72,7 @@ const MessageInput = ({ onSendMessage, conversationId }) => {
     if (trimmedMessage && onSendMessage) {
       onSendMessage(trimmedMessage);
       setMessage('');
+      setIsFirstMessage(false);
       textareaRef.current?.focus();
     }
   };
@@ -107,20 +87,20 @@ const MessageInput = ({ onSendMessage, conversationId }) => {
   return (
     <div className="p-3 border-t border-gray-200 bg-gray-100 rounded-b-lg shadow-sm">
       {/* Book template for first message */}
-      {messagesCount === 0 && bookDetails && !loadingBook && (
+      {isFirstMessage && bookDetails && !loadingBook && (
         <div className="mb-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
           <div className="flex items-center mb-2">
             <BookOpen className="h-4 w-4 text-blue-600 mr-2 flex-shrink-0" />
             <span className="text-sm font-medium text-blue-800">New conversation about a book</span>
           </div>
-          
+
           <div className="flex items-center">
             <div className="w-10 h-12 bg-white rounded overflow-hidden mr-3 border border-gray-200 flex-shrink-0">
               {bookDetails.cover_img_url ? (
-                <img 
-                  src={bookDetails.cover_img_url} 
+                <img
+                  src={bookDetails.cover_img_url}
                   alt={bookDetails.title}
-                  className="w-full h-full object-cover" 
+                  className="w-full h-full object-cover"
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center bg-gray-50">
@@ -128,15 +108,15 @@ const MessageInput = ({ onSendMessage, conversationId }) => {
                 </div>
               )}
             </div>
-            
+
             <div className="flex-1 min-w-0">
               <h4 className="text-sm font-medium line-clamp-1 text-gray-900">{bookDetails.title}</h4>
               {bookDetails.author && (
                 <p className="text-xs text-gray-500 line-clamp-1">by {bookDetails.author}</p>
               )}
             </div>
-            
-            <button 
+
+            <button
               className="ml-3 px-3 py-1 text-xs bg-white hover:bg-gray-100 text-blue-600 font-medium rounded border border-blue-300 transition-colors duration-150 flex-shrink-0"
               onClick={useBookTemplate}
             >
@@ -145,7 +125,7 @@ const MessageInput = ({ onSendMessage, conversationId }) => {
           </div>
         </div>
       )}
-      
+
       <div className="flex items-end space-x-2">
         {/* Message textarea */}
         <textarea
@@ -158,7 +138,7 @@ const MessageInput = ({ onSendMessage, conversationId }) => {
           rows={1}
           maxLength={2000}
         />
-        
+
         {/* Send button */}
         <button
           className={`p-2 rounded-lg flex items-center justify-center transition-colors duration-150 ${
@@ -173,7 +153,7 @@ const MessageInput = ({ onSendMessage, conversationId }) => {
           <Send className="h-5 w-5" />
         </button>
       </div>
-      
+
       {/* Character count */}
       {message.length > 1500 && (
         <div className="text-xs text-right mt-1 text-gray-400">
@@ -184,4 +164,4 @@ const MessageInput = ({ onSendMessage, conversationId }) => {
   );
 };
 
-export default MessageInput; 
+export default MessageInput;

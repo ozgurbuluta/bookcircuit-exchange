@@ -27,7 +27,7 @@ import {
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { supabase } from '@/lib/supabase';
+import { getProfilesByIds } from '@/lib/profileService';
 import { PostalCodeAutocomplete } from '@/components/ui-custom/PostalCodeAutocomplete';
 import { Slider } from '@/components/ui/slider';
 
@@ -119,24 +119,16 @@ const Home = () => {
     try {
       // Get unique user IDs
       const userIds = [...new Set(books.map(book => book.user_id))];
-      
-      // Fetch profiles
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, full_name')
-        .in('id', userIds);
-        
-      if (error) {
-        console.error('Error fetching profiles:', error);
-        return;
-      }
-      
+
+      // Fetch profiles using Firebase service
+      const profiles = await getProfilesByIds(userIds);
+
       // Create a map of user_id to full_name
       const ownerMap: Record<string, string> = {};
-      data.forEach(profile => {
-        ownerMap[profile.id] = profile.full_name || 'Anonymous';
+      Object.entries(profiles).forEach(([id, profile]) => {
+        ownerMap[id] = profile.full_name || 'Anonymous';
       });
-      
+
       setOwners(ownerMap);
     } catch (error) {
       console.error('Error fetching owner names:', error);

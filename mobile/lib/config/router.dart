@@ -42,13 +42,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         return isOnSplash ? null : AppRoutes.splash;
       }
 
-      // Redirect to home if authenticated and on auth page
+      // Redirect to home if authenticated and on auth/splash page
       if (isAuthenticated && (isOnAuthPage || isOnSplash)) {
         return AppRoutes.home;
       }
 
-      // Redirect to sign in if not authenticated
-      if (!isAuthenticated && !isOnAuthPage && !isOnSplash) {
+      // Redirect to sign in if not authenticated and not already on auth page
+      if (!isAuthenticated && !isOnAuthPage) {
         return AppRoutes.signIn;
       }
 

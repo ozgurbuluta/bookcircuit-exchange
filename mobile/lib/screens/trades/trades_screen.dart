@@ -17,7 +17,7 @@ class TradesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final filter = ref.watch(tradeFilterProvider);
     final tradesAsync = ref.watch(tradesProvider);
-    final currentUserId = ref.watch(currentUserProvider)?.id;
+    final currentUserId = ref.watch(currentUserProvider)?.uid;
 
     return Scaffold(
       backgroundColor: AppColors.paper,

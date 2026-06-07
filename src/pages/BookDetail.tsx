@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Helmet } from 'react-helmet';
-import { supabase } from '@/lib/supabase';
+import { getBookById } from '@/lib/bookService';
+import { getProfileById } from '@/lib/profileService';
+import { getOrCreateConversation, sendMessage } from '@/lib/conversationService';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -46,33 +48,29 @@ const BookDetail = () => {
     const fetchBookDetails = async () => {
       try {
         setLoading(true);
-        
-        // Fetch book details
-        const { data: bookData, error: bookError } = await supabase
-          .from('books')
-          .select('*')
-          .eq('id', id)
-          .single();
-          
-        if (bookError) throw bookError;
-        
+
+        // Fetch book details from Firebase
+        const bookData = await getBookById(id!);
+
+        if (!bookData) {
+          throw new Error('Book not found');
+        }
+
         // Fetch book owner details
-        const { data: ownerData, error: ownerError } = await supabase
-          .from('profiles')
-          .select('id, full_name, avatar_url')
-          .eq('id', bookData.user_id)
-          .single();
-          
-        if (ownerError) throw ownerError;
-        
+        const ownerData = await getProfileById(bookData.user_id);
+
         // Combine the data
         setBook({
           ...bookData,
-          owner: ownerData
+          owner: ownerData ? {
+            id: ownerData.id,
+            full_name: ownerData.full_name || 'Unknown',
+            avatar_url: ownerData.avatar_url || '',
+          } : undefined
         });
-      } catch (err) {
+      } catch (err: any) {
         console.error('Error fetching book details:', err);
-        setError('Could not load book details. Please try again later.');
+        setError(err.message || 'Could not load book details. Please try again later.');
       } finally {
         setLoading(false);
       }
@@ -85,7 +83,7 @@ const BookDetail = () => {
 
   const startConversation = async () => {
     if (!user || !book?.owner) return;
-    
+
     // Don't start a conversation with yourself
     if (user.id === book.owner.id) {
       toast({
@@ -95,22 +93,26 @@ const BookDetail = () => {
       });
       return;
     }
-    
+
     try {
       setStartingChat(true);
-      
-      // Call the RPC function we created in the database to start or retrieve a conversation
-      const { data, error } = await supabase
-        .rpc('start_conversation', { 
-          other_user_id: book.owner.id,
-          initial_message: `Hi, I'm interested in your book "${book.title}"! Is it still available?`,
-          book_id: book.id
-        });
-        
-      if (error) throw error;
-      
+
+      // Create or get existing conversation
+      const result = await getOrCreateConversation(book.owner.id, book.id);
+
+      if (!result.success || !result.conversationId) {
+        throw new Error(result.error || 'Could not start conversation');
+      }
+
+      // Send initial message
+      await sendMessage(
+        result.conversationId,
+        `Hi, I'm interested in your book "${book.title}"! Is it still available?`,
+        book.id
+      );
+
       // Navigate to the chat page with the conversation
-      navigate(`/chat/${data}`);
+      navigate(`/chat/${result.conversationId}`);
     } catch (err: any) {
       console.error('Error starting conversation:', err);
       toast({
@@ -146,9 +148,9 @@ const BookDetail = () => {
       <Helmet>
         <title>{book.title} | Turtle Turning Pages</title>
       </Helmet>
-      
+
       <Navbar />
-      
+
       <main className="flex-grow pt-28 pb-20">
         <div className="container mx-auto px-4 md:px-6">
           <Button
@@ -158,15 +160,15 @@ const BookDetail = () => {
           >
             <ArrowLeft className="mr-2 h-4 w-4" /> Back
           </Button>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {/* Book cover */}
             <div className="md:col-span-1">
               <div className="rounded-lg overflow-hidden border shadow-md aspect-[2/3] bg-gray-100">
                 {book.cover_img_url ? (
-                  <img 
-                    src={book.cover_img_url} 
-                    alt={`Cover of ${book.title}`} 
+                  <img
+                    src={book.cover_img_url}
+                    alt={`Cover of ${book.title}`}
                     className="w-full h-full object-cover"
                   />
                 ) : (
@@ -175,45 +177,45 @@ const BookDetail = () => {
                   </div>
                 )}
               </div>
-              
+
               {/* Owner info and contact button on mobile */}
               <div className="mt-6 block md:hidden">
-                <OwnerCard 
-                  owner={book.owner} 
-                  isOwnBook={user?.id === book.owner.id} 
+                <OwnerCard
+                  owner={book.owner}
+                  isOwnBook={user?.id === book.owner?.id}
                   onContactClick={startConversation}
                   loading={startingChat}
                   book={book}
                 />
               </div>
             </div>
-            
+
             {/* Book details */}
             <div className="md:col-span-2">
               <h1 className="text-3xl font-bold mb-2">{book.title}</h1>
               <h2 className="text-xl text-gray-600 mb-4">by {book.author}</h2>
-              
+
               <div className="flex flex-wrap gap-2 mb-6">
                 <Badge variant="secondary" className="text-sm">
                   Condition: {book.condition}
                 </Badge>
-                
+
                 <Badge variant="outline" className="text-sm flex items-center">
                   <MapPin size={14} className="mr-1" /> {book.location_text}
                 </Badge>
-                
+
                 <Badge variant="outline" className="text-sm flex items-center">
-                  <Calendar size={14} className="mr-1" /> 
+                  <Calendar size={14} className="mr-1" />
                   Listed {new Date(book.created_at).toLocaleDateString()}
                 </Badge>
-                
+
                 {book.isbn && (
                   <Badge variant="outline" className="text-sm">
                     ISBN: {book.isbn}
                   </Badge>
                 )}
               </div>
-              
+
               <Card className="mb-8">
                 <CardHeader>
                   <CardTitle>Description</CardTitle>
@@ -224,12 +226,12 @@ const BookDetail = () => {
                   </p>
                 </CardContent>
               </Card>
-              
+
               {/* Owner info on desktop */}
               <div className="hidden md:block">
-                <OwnerCard 
-                  owner={book.owner} 
-                  isOwnBook={user?.id === book.owner.id} 
+                <OwnerCard
+                  owner={book.owner}
+                  isOwnBook={user?.id === book.owner?.id}
                   onContactClick={startConversation}
                   loading={startingChat}
                   book={book}
@@ -239,7 +241,7 @@ const BookDetail = () => {
           </div>
         </div>
       </main>
-      
+
       <Footer />
     </div>
   );
@@ -256,10 +258,10 @@ interface OwnerCardProps {
 
 const OwnerCard = ({ owner, isOwnBook, onContactClick, loading, book }: OwnerCardProps) => {
   if (!owner) return null;
-  
+
   // Book is not available for trading or requesting if it's already in a trade
   const isBookAvailable = !book.status || book.status === 'available';
-  
+
   return (
     <Card>
       <CardHeader>
@@ -269,9 +271,9 @@ const OwnerCard = ({ owner, isOwnBook, onContactClick, loading, book }: OwnerCar
         <div className="flex items-center mb-4">
           <div className="mr-3 h-12 w-12 overflow-hidden rounded-full bg-gray-200">
             {owner.avatar_url ? (
-              <img 
-                src={owner.avatar_url} 
-                alt={owner.full_name} 
+              <img
+                src={owner.avatar_url}
+                alt={owner.full_name}
                 className="h-full w-full object-cover"
               />
             ) : (
@@ -294,7 +296,7 @@ const OwnerCard = ({ owner, isOwnBook, onContactClick, loading, book }: OwnerCar
             )}
           </div>
         </div>
-        
+
         {/* Interest and action buttons */}
         {!isOwnBook && (
           <div className="space-y-3">
@@ -304,7 +306,7 @@ const OwnerCard = ({ owner, isOwnBook, onContactClick, loading, book }: OwnerCar
                 ownerId={book.user_id}
                 className="flex-1"
               />
-              
+
               <Button
                 variant="outline"
                 className="flex-1"
@@ -324,9 +326,9 @@ const OwnerCard = ({ owner, isOwnBook, onContactClick, loading, book }: OwnerCar
                 )}
               </Button>
             </div>
-            
+
             {isBookAvailable && (
-              <RequestBookButton 
+              <RequestBookButton
                 bookId={book.id}
                 bookTitle={book.title}
                 ownerId={owner.id}
@@ -347,4 +349,4 @@ const OwnerCard = ({ owner, isOwnBook, onContactClick, loading, book }: OwnerCar
   );
 };
 
-export default BookDetail; 
+export default BookDetail;

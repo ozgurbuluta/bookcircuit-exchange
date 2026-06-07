@@ -53,7 +53,7 @@ class TradeDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tradeAsync = ref.watch(tradeProvider(tradeId));
-    final currentUserId = ref.watch(currentUserProvider)?.id ?? '';
+    final currentUserId = ref.watch(currentUserProvider)?.uid ?? '';
 
     return Scaffold(
       backgroundColor: AppColors.paper,
