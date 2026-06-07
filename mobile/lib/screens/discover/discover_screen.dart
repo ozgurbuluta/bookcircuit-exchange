@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../config/theme.dart';
+import '../../models/book.dart';
 import '../../providers/providers.dart';
 import '../../widgets/widgets.dart';
 
@@ -390,37 +392,77 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
   }
 
   Widget _buildMapView(List books) {
-    // Simplified map placeholder - would use google_maps_flutter in full implementation
+    final typedBooks = books.cast<Book>();
+    final booksWithLocation = typedBooks.where((b) => b.locationLat != null && b.locationLng != null).toList();
+
+    if (booksWithLocation.isEmpty) {
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 20),
+        decoration: BoxDecoration(
+          color: AppColors.paper2,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.line, width: 0.5),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.map_outlined, size: 48, color: AppColors.ink3),
+              const SizedBox(height: 12),
+              Text(
+                'No locations available',
+                style: AppTypography.serifSemiBold.copyWith(
+                  fontSize: 17,
+                  color: AppColors.ink2,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Books need location data to appear on map',
+                style: AppTypography.sansRegular.copyWith(
+                  fontSize: 13.5,
+                  color: AppColors.ink3,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final markers = booksWithLocation.map((book) {
+      return Marker(
+        markerId: MarkerId(book.id),
+        position: LatLng(book.locationLat!, book.locationLng!),
+        infoWindow: InfoWindow(
+          title: book.title,
+          snippet: book.author,
+          onTap: () => context.push('/book/${book.id}'),
+        ),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+      );
+    }).toSet();
+
+    final centerLat = booksWithLocation.map((b) => b.locationLat!).reduce((a, b) => a + b) / booksWithLocation.length;
+    final centerLng = booksWithLocation.map((b) => b.locationLng!).reduce((a, b) => a + b) / booksWithLocation.length;
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: const Color(0xFFE7DFC9),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.line, width: 0.5),
       ),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.map, size: 48, color: AppColors.ink3),
-            const SizedBox(height: 12),
-            Text(
-              'Map view',
-              style: AppTypography.serifSemiBold.copyWith(
-                fontSize: 17,
-                color: AppColors.ink2,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${books.length} books nearby',
-              style: AppTypography.sansRegular.copyWith(
-                fontSize: 13.5,
-                color: AppColors.ink3,
-              ),
-            ),
-          ],
+      child: GoogleMap(
+        initialCameraPosition: CameraPosition(
+          target: LatLng(centerLat, centerLng),
+          zoom: 12,
         ),
+        markers: markers,
+        myLocationEnabled: true,
+        myLocationButtonEnabled: true,
+        zoomControlsEnabled: false,
+        mapToolbarEnabled: false,
       ),
     );
   }
