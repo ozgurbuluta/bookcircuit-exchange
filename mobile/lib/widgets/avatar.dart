@@ -79,9 +79,11 @@ class UserAvatar extends StatelessWidget {
           letters.substring(0, letters.length.clamp(0, 2)),
           style: AppTypography.serifMedium.copyWith(
             fontSize: size * 0.4,
-            letterSpacing: 0.3,
+            letterSpacing: 0,
+            height: 1,
             color: Colors.white,
           ),
+          textAlign: TextAlign.center,
         ),
       ),
     );

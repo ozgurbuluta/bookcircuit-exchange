@@ -6,18 +6,33 @@ import '../../config/router.dart';
 import '../../providers/providers.dart';
 import '../../widgets/widgets.dart';
 
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
-  Future<void> _onRefresh(WidgetRef ref) async {
+  @override
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  final _searchController = TextEditingController();
+  final _searchFocusNode = FocusNode();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
+
+  Future<void> _onRefresh() async {
     ref.invalidate(booksProvider);
     ref.invalidate(pendingTradesCountProvider);
-    // Wait for data to refresh
     await Future.delayed(const Duration(milliseconds: 500));
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final profile = ref.watch(currentProfileProvider);
     final booksAsync = ref.watch(booksProvider);
     final pendingTrades = ref.watch(pendingTradesCountProvider);
@@ -27,7 +42,7 @@ class HomeScreen extends ConsumerWidget {
       body: SafeArea(
         bottom: false,
         child: RefreshIndicator(
-          onRefresh: () => _onRefresh(ref),
+          onRefresh: _onRefresh,
           color: AppColors.rust,
           backgroundColor: AppColors.paper2,
           child: CustomScrollView(
@@ -96,36 +111,56 @@ class HomeScreen extends ConsumerWidget {
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: GestureDetector(
-                  onTap: () => context.go(AppRoutes.discover),
-                  child: Container(
-                    height: 46,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    decoration: BoxDecoration(
-                      color: AppColors.paper2,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: AppColors.line, width: 0.5),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.ink.withValues(alpha: 0.04),
-                          blurRadius: 2,
-                          offset: const Offset(0, 1),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.search, size: 19, color: AppColors.ink3),
-                        const SizedBox(width: 10),
-                        Text(
-                          'Search titles, authors...',
+                child: Container(
+                  height: 46,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: AppColors.paper2,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppColors.line, width: 0.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.ink.withValues(alpha: 0.04),
+                        blurRadius: 2,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.search, size: 19, color: AppColors.ink3),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: _searchController,
+                          focusNode: _searchFocusNode,
+                          onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()),
                           style: AppTypography.sansRegular.copyWith(
                             fontSize: 15,
-                            color: AppColors.ink3,
+                            color: AppColors.ink,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: 'Search titles, authors...',
+                            hintStyle: AppTypography.sansRegular.copyWith(
+                              fontSize: 15,
+                              color: AppColors.ink3,
+                            ),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                      if (_searchQuery.isNotEmpty)
+                        GestureDetector(
+                          onTap: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                            _searchFocusNode.unfocus();
+                          },
+                          child: const Icon(Icons.close, size: 18, color: AppColors.ink3),
+                        ),
+                    ],
                   ),
                 ),
               ),
@@ -224,7 +259,13 @@ class HomeScreen extends ConsumerWidget {
 
             // Books carousel
             booksAsync.when(
-              data: (books) => books.isEmpty
+              data: (allBooks) {
+                final books = _searchQuery.isEmpty
+                    ? allBooks
+                    : allBooks.where((b) =>
+                        b.title.toLowerCase().contains(_searchQuery) ||
+                        b.author.toLowerCase().contains(_searchQuery)).toList();
+                return books.isEmpty
                   ? SliverToBoxAdapter(
                       child: Container(
                         margin: const EdgeInsets.symmetric(horizontal: 20),
@@ -239,7 +280,7 @@ class HomeScreen extends ConsumerWidget {
                             Icon(Icons.menu_book_outlined, size: 48, color: AppColors.ink3.withValues(alpha: 0.5)),
                             const SizedBox(height: 12),
                             Text(
-                              'No books nearby yet',
+                              _searchQuery.isEmpty ? 'No books nearby yet' : 'No matches found',
                               style: AppTypography.serifSemiBold.copyWith(
                                 fontSize: 16,
                                 color: AppColors.ink2,
@@ -247,7 +288,7 @@ class HomeScreen extends ConsumerWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Be the first to share a book!',
+                              _searchQuery.isEmpty ? 'Be the first to share a book!' : 'Try a different search term',
                               style: AppTypography.sansRegular.copyWith(
                                 fontSize: 13,
                                 color: AppColors.ink3,
@@ -276,7 +317,8 @@ class HomeScreen extends ConsumerWidget {
                           },
                         ),
                       ),
-                    ),
+                    );
+              },
               loading: () => SliverToBoxAdapter(
                 child: SizedBox(
                   height: 220,
@@ -324,40 +366,52 @@ class HomeScreen extends ConsumerWidget {
 
             // Books list
             booksAsync.when(
-              data: (books) => SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                sliver: SliverToBoxAdapter(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.paper2,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: AppColors.line, width: 0.5),
-                    ),
-                    child: Column(
-                      children: books.skip(5).take(4).map((book) {
-                        final isFirst = books.skip(5).first == book;
-                        return Container(
-                          decoration: BoxDecoration(
-                            border: isFirst
-                                ? null
-                                : const Border(
-                                    top: BorderSide(
-                                      color: AppColors.line2,
-                                      width: 0.5,
+              data: (allBooks) {
+                final books = _searchQuery.isEmpty
+                    ? allBooks
+                    : allBooks.where((b) =>
+                        b.title.toLowerCase().contains(_searchQuery) ||
+                        b.author.toLowerCase().contains(_searchQuery)).toList();
+                final freshBooks = books.skip(5).take(4).toList();
+                if (freshBooks.isEmpty) {
+                  return const SliverToBoxAdapter(child: SizedBox.shrink());
+                }
+                return SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  sliver: SliverToBoxAdapter(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.paper2,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: AppColors.line, width: 0.5),
+                      ),
+                      child: Column(
+                        children: freshBooks.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final book = entry.value;
+                          return Container(
+                            decoration: BoxDecoration(
+                              border: index == 0
+                                  ? null
+                                  : const Border(
+                                      top: BorderSide(
+                                        color: AppColors.line2,
+                                        width: 0.5,
+                                      ),
                                     ),
-                                  ),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: BookCard(
-                            book: book,
-                            onTap: () => context.push('/book/${book.id}'),
-                          ),
-                        );
-                      }).toList(),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: BookCard(
+                              book: book,
+                              onTap: () => context.push('/book/${book.id}'),
+                            ),
+                          );
+                        }).toList(),
+                      ),
                     ),
                   ),
-                ),
-              ),
+                );
+              },
               loading: () => const SliverToBoxAdapter(
                 child: Center(child: CircularProgressIndicator()),
               ),

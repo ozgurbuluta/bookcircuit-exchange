@@ -3,11 +3,12 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Menu, X, User, Loader2, MessageCircle, Repeat } from 'lucide-react';
 import Button from './Button';
 import { useAuth } from '@/context/AuthContext';
-import { supabase } from '@/lib/supabase';
+import { getProfileById } from '@/lib/profileService';
 import { TradeNotificationDropdown } from '@/components/trading/TradeNotificationDropdown';
 
 interface UserProfile {
   avatar_url: string | null;
+  full_name: string | null;
 }
 
 const Navbar = () => {
@@ -35,26 +36,6 @@ const Navbar = () => {
   useEffect(() => {
     if (user) {
       fetchUserProfile();
-      
-      // Subscribe to real-time changes on the user's profile
-      const profileSubscription = supabase
-        .channel('public:profiles')
-        .on('postgres_changes', {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'profiles',
-          filter: `id=eq.${user.id}`
-        }, (payload) => {
-          console.log('Profile updated:', payload);
-          if (payload.new && payload.new.avatar_url !== undefined) {
-            setUserProfile(payload.new as UserProfile);
-          }
-        })
-        .subscribe();
-      
-      return () => {
-        profileSubscription.unsubscribe();
-      };
     } else {
       setUserProfile(null);
     }
@@ -62,21 +43,16 @@ const Navbar = () => {
 
   const fetchUserProfile = async () => {
     if (!user) return;
-    
+
     try {
       setLoadingProfile(true);
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('avatar_url')
-        .eq('id', user.id)
-        .single();
-      
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching profile:', error);
-      }
-      
-      if (data) {
-        setUserProfile(data);
+      const profile = await getProfileById(user.id);
+
+      if (profile) {
+        setUserProfile({
+          avatar_url: profile.avatar_url || null,
+          full_name: profile.full_name || null
+        });
       }
     } catch (error: any) {
       console.error('Error:', error.message);
@@ -115,9 +91,10 @@ const Navbar = () => {
       );
     }
     
+    const initial = userProfile?.full_name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || '?';
     return (
       <div className="w-8 h-8 bg-book-accent/10 rounded-full flex items-center justify-center">
-        <User className="w-4 h-4 text-book-accent" />
+        <span className="text-sm font-medium text-book-accent">{initial}</span>
       </div>
     );
   };
@@ -186,7 +163,7 @@ const Navbar = () => {
                 >
                   {renderUserAvatar()}
                   <span className="text-sm text-book-dark/70 hidden lg:inline-block">
-                    {user.email?.split('@')[0]}
+                    {userProfile?.full_name || user.email?.split('@')[0]}
                   </span>
                 </div>
                 <TradeNotificationDropdown />
@@ -290,7 +267,7 @@ const Navbar = () => {
                 >
                   {renderUserAvatar()}
                   <span className="text-sm text-book-dark">
-                    {user.email}
+                    {userProfile?.full_name || user.email}
                   </span>
                 </div>
                 <TradeNotificationDropdown />
