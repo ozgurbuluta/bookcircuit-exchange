@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 /// Design tokens for Turtle Turning Pages
 /// Warm, literary palette with paper/ink tones and terracotta accents
@@ -83,39 +82,39 @@ class StatusColors {
   const StatusColors(this.label, this.foreground, this.background);
 }
 
-/// App typography
+/// App typography - Uses SF Pro (system font) on iOS
 class AppTypography {
-  // Serif font for titles and literary elements
-  static TextStyle get serifRegular => GoogleFonts.newsreader(
+  // Serif-style for titles (using system font with different weights)
+  static TextStyle get serifRegular => const TextStyle(
         fontWeight: FontWeight.w400,
       );
 
-  static TextStyle get serifMedium => GoogleFonts.newsreader(
+  static TextStyle get serifMedium => const TextStyle(
         fontWeight: FontWeight.w500,
       );
 
-  static TextStyle get serifSemiBold => GoogleFonts.newsreader(
+  static TextStyle get serifSemiBold => const TextStyle(
         fontWeight: FontWeight.w600,
       );
 
-  static TextStyle get serifItalic => GoogleFonts.newsreader(
+  static TextStyle get serifItalic => const TextStyle(
         fontStyle: FontStyle.italic,
       );
 
-  // Sans-serif font for UI elements
-  static TextStyle get sansRegular => GoogleFonts.hankenGrotesk(
+  // Sans-serif for UI elements (system font - SF Pro on iOS)
+  static TextStyle get sansRegular => const TextStyle(
         fontWeight: FontWeight.w400,
       );
 
-  static TextStyle get sansMedium => GoogleFonts.hankenGrotesk(
+  static TextStyle get sansMedium => const TextStyle(
         fontWeight: FontWeight.w500,
       );
 
-  static TextStyle get sansSemiBold => GoogleFonts.hankenGrotesk(
+  static TextStyle get sansSemiBold => const TextStyle(
         fontWeight: FontWeight.w600,
       );
 
-  static TextStyle get sansBold => GoogleFonts.hankenGrotesk(
+  static TextStyle get sansBold => const TextStyle(
         fontWeight: FontWeight.w700,
       );
 }
