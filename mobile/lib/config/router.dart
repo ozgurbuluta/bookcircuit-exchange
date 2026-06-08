@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
-import '../providers/onboarding_provider.dart';
 import '../screens/screens.dart';
 import 'theme.dart';
 
@@ -26,44 +25,43 @@ class AppRoutes {
   static const String proposeSwap = '/propose-swap/:bookId';
 }
 
-/// Notifier that triggers router refresh when auth or onboarding state changes
-class RouterRefreshNotifier extends ChangeNotifier {
-  RouterRefreshNotifier(Ref ref) {
-    ref.listen(authProvider, (_, __) => notifyListeners());
-    ref.listen(onboardingNotifierProvider, (_, __) => notifyListeners());
+/// Listenable that notifies when auth state changes
+class AuthChangeNotifier extends ChangeNotifier {
+  AuthChangeNotifier(Ref ref) {
+    ref.listen<AuthState>(authProvider, (_, __) {
+      notifyListeners();
+    });
   }
 }
 
-final routerRefreshProvider = Provider((ref) => RouterRefreshNotifier(ref));
+final _authChangeProvider = Provider((ref) => AuthChangeNotifier(ref));
 
 /// Router provider
 final routerProvider = Provider<GoRouter>((ref) {
-  final refreshNotifier = ref.watch(routerRefreshProvider);
+  final authChangeNotifier = ref.watch(_authChangeProvider);
 
   return GoRouter(
     initialLocation: AppRoutes.splash,
     debugLogDiagnostics: true,
-    refreshListenable: refreshNotifier,
+    refreshListenable: authChangeNotifier,
     redirect: (context, state) {
       final authState = ref.read(authProvider);
-      final onboardingState = ref.read(onboardingNotifierProvider);
 
       final isLoading = authState.isLoading;
       final isAuthenticated = authState.isAuthenticated;
-      final isOnAuthPage = state.matchedLocation == AppRoutes.signIn ||
-          state.matchedLocation == AppRoutes.signUp;
-      final isOnSplash = state.matchedLocation == AppRoutes.splash;
-      final isOnOnboarding = state.matchedLocation == AppRoutes.onboarding;
+      final currentPath = state.matchedLocation;
 
-      final onboardingCompleted = onboardingState.valueOrNull ?? false;
-      final onboardingLoading = onboardingState.isLoading;
+      final isOnAuthPage = currentPath == AppRoutes.signIn ||
+                           currentPath == AppRoutes.signUp;
+      final isOnSplash = currentPath == AppRoutes.splash;
+      final isOnOnboarding = currentPath == AppRoutes.onboarding;
 
-      // Show splash while loading auth or onboarding state
-      if (isLoading || onboardingLoading) {
+      // Show splash while loading
+      if (isLoading) {
         return isOnSplash ? null : AppRoutes.splash;
       }
 
-      // If authenticated, go to home (skip onboarding for existing users)
+      // Authenticated users go to home
       if (isAuthenticated) {
         if (isOnAuthPage || isOnSplash || isOnOnboarding) {
           return AppRoutes.home;
@@ -71,12 +69,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         return null;
       }
 
-      // Not authenticated: show onboarding first if not completed
-      if (!onboardingCompleted && !isOnOnboarding) {
-        return AppRoutes.onboarding;
-      }
-
-      // Not authenticated and onboarding done: go to sign in
+      // Not authenticated - go to sign in (skip onboarding for now to debug)
       if (!isOnAuthPage) {
         return AppRoutes.signIn;
       }
@@ -84,19 +77,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
-      // Splash
       GoRoute(
         path: AppRoutes.splash,
         builder: (context, state) => const SplashScreen(),
       ),
-
-      // Onboarding
       GoRoute(
         path: AppRoutes.onboarding,
         builder: (context, state) => const OnboardingScreen(),
       ),
-
-      // Auth routes
       GoRoute(
         path: AppRoutes.signIn,
         builder: (context, state) => const SignInScreen(),
@@ -105,8 +93,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.signUp,
         builder: (context, state) => const SignUpScreen(),
       ),
-
-      // Main shell with bottom navigation
       ShellRoute(
         builder: (context, state, child) => MainShell(child: child),
         routes: [
@@ -142,8 +128,6 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
         ],
       ),
-
-      // Detail routes (push on top of shell)
       GoRoute(
         path: AppRoutes.bookDetail,
         builder: (context, state) {
@@ -197,7 +181,17 @@ final routerProvider = Provider<GoRouter>((ref) {
     errorBuilder: (context, state) => Scaffold(
       backgroundColor: AppColors.paper,
       body: Center(
-        child: Text('Page not found: ${state.matchedLocation}'),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('Page not found: ${state.matchedLocation}'),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () => context.go(AppRoutes.signIn),
+              child: const Text('Go to Sign In'),
+            ),
+          ],
+        ),
       ),
     ),
   );
