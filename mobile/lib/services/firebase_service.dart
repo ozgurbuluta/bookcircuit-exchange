@@ -116,7 +116,7 @@ class FirebaseService {
     String? query,
     String? genre,
     String? userId,
-    int limit = 20,
+    int limit = 30,
   }) async {
     Query<Map<String, dynamic>> ref = db
         .collection('books')

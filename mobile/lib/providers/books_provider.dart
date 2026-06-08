@@ -55,8 +55,8 @@ double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
   return R * c;
 }
 
-/// Books search results provider
-final booksProvider = FutureProvider.autoDispose<List<Book>>((ref) async {
+/// Books search results provider - cached to avoid refetching
+final booksProvider = FutureProvider<List<Book>>((ref) async {
   final params = ref.watch(bookSearchParamsProvider);
 
   var books = await FirebaseService.getBooks(
@@ -94,20 +94,20 @@ final booksProvider = FutureProvider.autoDispose<List<Book>>((ref) async {
   return books;
 });
 
-/// Single book provider
+/// Single book provider - keeps cache for faster navigation back
 final bookProvider =
-    FutureProvider.autoDispose.family<Book?, String>((ref, bookId) async {
+    FutureProvider.family<Book?, String>((ref, bookId) async {
   return FirebaseService.getBook(bookId);
 });
 
-/// My books provider
-final myBooksProvider = FutureProvider.autoDispose<List<Book>>((ref) async {
+/// My books provider - cached
+final myBooksProvider = FutureProvider<List<Book>>((ref) async {
   return FirebaseService.getMyBooks();
 });
 
 /// User's books provider
 final userBooksProvider =
-    FutureProvider.autoDispose.family<List<Book>, String>((ref, userId) async {
+    FutureProvider.family<List<Book>, String>((ref, userId) async {
   return FirebaseService.getUserBooks(userId);
 });
 
