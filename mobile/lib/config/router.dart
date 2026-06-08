@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
 import '../providers/onboarding_provider.dart';
 import '../screens/screens.dart';
+import 'theme.dart';
 
 /// Route names
 class AppRoutes {
@@ -25,15 +26,28 @@ class AppRoutes {
   static const String proposeSwap = '/propose-swap/:bookId';
 }
 
+/// Notifier that triggers router refresh when auth or onboarding state changes
+class RouterRefreshNotifier extends ChangeNotifier {
+  RouterRefreshNotifier(Ref ref) {
+    ref.listen(authProvider, (_, __) => notifyListeners());
+    ref.listen(onboardingNotifierProvider, (_, __) => notifyListeners());
+  }
+}
+
+final routerRefreshProvider = Provider((ref) => RouterRefreshNotifier(ref));
+
 /// Router provider
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authProvider);
-  final onboardingState = ref.watch(onboardingNotifierProvider);
+  final refreshNotifier = ref.watch(routerRefreshProvider);
 
   return GoRouter(
     initialLocation: AppRoutes.splash,
     debugLogDiagnostics: true,
+    refreshListenable: refreshNotifier,
     redirect: (context, state) {
+      final authState = ref.read(authProvider);
+      final onboardingState = ref.read(onboardingNotifierProvider);
+
       final isLoading = authState.isLoading;
       final isAuthenticated = authState.isAuthenticated;
       final isOnAuthPage = state.matchedLocation == AppRoutes.signIn ||
@@ -41,7 +55,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isOnSplash = state.matchedLocation == AppRoutes.splash;
       final isOnOnboarding = state.matchedLocation == AppRoutes.onboarding;
 
-      // Check onboarding status
       final onboardingCompleted = onboardingState.valueOrNull ?? false;
       final onboardingLoading = onboardingState.isLoading;
 
@@ -182,6 +195,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
     ],
     errorBuilder: (context, state) => Scaffold(
+      backgroundColor: AppColors.paper,
       body: Center(
         child: Text('Page not found: ${state.matchedLocation}'),
       ),
