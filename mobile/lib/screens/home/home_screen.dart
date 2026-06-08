@@ -39,6 +39,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.paper,
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => context.push(AppRoutes.addBook),
+        backgroundColor: AppColors.rust,
+        elevation: 4,
+        child: const Icon(Icons.add, color: Colors.white, size: 28),
+      ),
       body: SafeArea(
         bottom: false,
         child: RefreshIndicator(
