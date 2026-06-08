@@ -31,22 +31,13 @@ class MessagesScreen extends ConsumerWidget {
             // Header
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Messages',
-                    style: AppTypography.serifSemiBold.copyWith(
-                      fontSize: 32,
-                      letterSpacing: -0.4,
-                      color: AppColors.ink,
-                    ),
-                  ),
-                  AppIconButton(
-                    icon: Icons.edit_outlined,
-                    onPressed: () {},
-                  ),
-                ],
+              child: Text(
+                'Messages',
+                style: AppTypography.serifSemiBold.copyWith(
+                  fontSize: 32,
+                  letterSpacing: -0.4,
+                  color: AppColors.ink,
+                ),
               ),
             ),
 
