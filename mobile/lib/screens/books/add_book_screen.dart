@@ -529,13 +529,6 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
                 hint: 'Enter author name',
               ),
 
-              // ISBN
-              _buildField(
-                'ISBN (optional)',
-                _isbnController,
-                hint: 'Enter ISBN',
-              ),
-
               // Condition
               _buildLabel('Condition'),
               const SizedBox(height: 8),
