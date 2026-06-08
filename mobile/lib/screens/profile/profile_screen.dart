@@ -11,6 +11,19 @@ import '../../widgets/widgets.dart';
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
+  void _showComingSoon(BuildContext context, String feature) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '$feature coming soon!',
+          style: AppTypography.sansRegular.copyWith(color: Colors.white),
+        ),
+        backgroundColor: AppColors.ink2,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(currentProfileProvider);
@@ -31,7 +44,7 @@ class ProfileScreen extends ConsumerWidget {
                   children: [
                     AppIconButton(
                       icon: Icons.settings_outlined,
-                      onPressed: () {},
+                      onPressed: () => context.push(AppRoutes.editProfile),
                     ),
                   ],
                 ),
@@ -213,10 +226,26 @@ class ProfileScreen extends ConsumerWidget {
                         icon: Icons.location_on_outlined,
                         label: 'Reading location',
                         value: profile?.formattedLocation ?? 'Set location',
+                        onTap: () => context.push(AppRoutes.editProfile),
                       ),
-                      _SettingsRow(icon: Icons.notifications_outlined, label: 'Notifications', value: 'On'),
-                      _SettingsRow(icon: Icons.favorite_outline, label: 'Saved books', value: '0'),
-                      _SettingsRow(icon: Icons.settings_outlined, label: 'Settings', value: ''),
+                      _SettingsRow(
+                        icon: Icons.notifications_outlined,
+                        label: 'Notifications',
+                        value: 'On',
+                        onTap: () => _showComingSoon(context, 'Notifications'),
+                      ),
+                      _SettingsRow(
+                        icon: Icons.favorite_outline,
+                        label: 'Saved books',
+                        value: '0',
+                        onTap: () => _showComingSoon(context, 'Saved books'),
+                      ),
+                      _SettingsRow(
+                        icon: Icons.settings_outlined,
+                        label: 'Settings',
+                        value: '',
+                        onTap: () => context.push(AppRoutes.editProfile),
+                      ),
                     ],
                   ),
                 ),
@@ -295,52 +324,62 @@ class _SettingsRow extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
+  final VoidCallback? onTap;
 
-  const _SettingsRow({required this.icon, required this.label, required this.value});
+  const _SettingsRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: AppColors.line2, width: 0.5)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: AppColors.rust.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(9),
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: AppColors.line2, width: 0.5)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: AppColors.rust.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: Icon(icon, size: 18, color: AppColors.rust),
             ),
-            child: Icon(icon, size: 18, color: AppColors.rust),
-          ),
-          const SizedBox(width: 13),
-          Expanded(
-            child: Text(
-              label,
-              style: AppTypography.sansSemiBold.copyWith(
-                fontSize: 15,
-                color: AppColors.ink,
+            const SizedBox(width: 13),
+            Expanded(
+              child: Text(
+                label,
+                style: AppTypography.sansSemiBold.copyWith(
+                  fontSize: 15,
+                  color: AppColors.ink,
+                ),
               ),
             ),
-          ),
-          if (value.isNotEmpty)
-            Text(
-              value,
-              style: AppTypography.sansRegular.copyWith(
-                fontSize: 13.5,
-                color: AppColors.ink3,
+            if (value.isNotEmpty)
+              Text(
+                value,
+                style: AppTypography.sansRegular.copyWith(
+                  fontSize: 13.5,
+                  color: AppColors.ink3,
+                ),
               ),
+            const SizedBox(width: 8),
+            Icon(
+              Icons.chevron_right,
+              size: 17,
+              color: AppColors.ink.withValues(alpha: 0.22),
             ),
-          const SizedBox(width: 8),
-          Icon(
-            Icons.chevron_right,
-            size: 17,
-            color: AppColors.ink.withValues(alpha: 0.22),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
