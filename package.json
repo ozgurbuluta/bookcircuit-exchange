@@ -1,7 +1,8 @@
 {
-  "name": "vite_react_shadcn_ts",
+  "name": "turtle-turning-pages",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "A community-driven book exchange app connecting local book lovers",
   "type": "module",
   "scripts": {
     "dev": "vite",
