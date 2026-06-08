@@ -50,18 +50,21 @@ final routerProvider = Provider<GoRouter>((ref) {
         return isOnSplash ? null : AppRoutes.splash;
       }
 
-      // Show onboarding if not completed and not already on onboarding
+      // If authenticated, go to home (skip onboarding for existing users)
+      if (isAuthenticated) {
+        if (isOnAuthPage || isOnSplash || isOnOnboarding) {
+          return AppRoutes.home;
+        }
+        return null;
+      }
+
+      // Not authenticated: show onboarding first if not completed
       if (!onboardingCompleted && !isOnOnboarding) {
         return AppRoutes.onboarding;
       }
 
-      // Redirect to home if authenticated and on auth/splash/onboarding page
-      if (isAuthenticated && (isOnAuthPage || isOnSplash || isOnOnboarding)) {
-        return AppRoutes.home;
-      }
-
-      // Redirect to sign in if not authenticated and not on auth page (and onboarding is done)
-      if (!isAuthenticated && !isOnAuthPage && onboardingCompleted) {
+      // Not authenticated and onboarding done: go to sign in
+      if (!isOnAuthPage) {
         return AppRoutes.signIn;
       }
 
