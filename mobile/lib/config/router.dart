@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
+import '../providers/onboarding_provider.dart';
 import '../screens/screens.dart';
 
 /// Route names
 class AppRoutes {
   static const String splash = '/';
+  static const String onboarding = '/onboarding';
   static const String signIn = '/sign-in';
   static const String signUp = '/sign-up';
   static const String home = '/home';
@@ -26,6 +28,7 @@ class AppRoutes {
 /// Router provider
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authProvider);
+  final onboardingState = ref.watch(onboardingNotifierProvider);
 
   return GoRouter(
     initialLocation: AppRoutes.splash,
@@ -36,19 +39,29 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isOnAuthPage = state.matchedLocation == AppRoutes.signIn ||
           state.matchedLocation == AppRoutes.signUp;
       final isOnSplash = state.matchedLocation == AppRoutes.splash;
+      final isOnOnboarding = state.matchedLocation == AppRoutes.onboarding;
 
-      // Show splash while loading
-      if (isLoading) {
+      // Check onboarding status
+      final onboardingCompleted = onboardingState.valueOrNull ?? false;
+      final onboardingLoading = onboardingState.isLoading;
+
+      // Show splash while loading auth or onboarding state
+      if (isLoading || onboardingLoading) {
         return isOnSplash ? null : AppRoutes.splash;
       }
 
-      // Redirect to home if authenticated and on auth/splash page
-      if (isAuthenticated && (isOnAuthPage || isOnSplash)) {
+      // Show onboarding if not completed and not already on onboarding
+      if (!onboardingCompleted && !isOnOnboarding) {
+        return AppRoutes.onboarding;
+      }
+
+      // Redirect to home if authenticated and on auth/splash/onboarding page
+      if (isAuthenticated && (isOnAuthPage || isOnSplash || isOnOnboarding)) {
         return AppRoutes.home;
       }
 
-      // Redirect to sign in if not authenticated and not already on auth page
-      if (!isAuthenticated && !isOnAuthPage) {
+      // Redirect to sign in if not authenticated and not on auth page (and onboarding is done)
+      if (!isAuthenticated && !isOnAuthPage && onboardingCompleted) {
         return AppRoutes.signIn;
       }
 
@@ -59,6 +72,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.splash,
         builder: (context, state) => const SplashScreen(),
+      ),
+
+      // Onboarding
+      GoRoute(
+        path: AppRoutes.onboarding,
+        builder: (context, state) => const OnboardingScreen(),
       ),
 
       // Auth routes

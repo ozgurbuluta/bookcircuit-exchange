@@ -1,5 +1,6 @@
 // Export all screens
 export 'splash_screen.dart';
+export 'onboarding/onboarding_screen.dart';
 export 'auth/sign_in_screen.dart';
 export 'auth/sign_up_screen.dart';
 export 'main_shell.dart';
