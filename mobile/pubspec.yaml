@@ -63,5 +63,8 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
+  assets:
+    - assets/images/
+
   # Note: Fonts are loaded via google_fonts package from the network
   # No local font assets needed
