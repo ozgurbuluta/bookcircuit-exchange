@@ -47,5 +47,9 @@
 	<true/>
 	<key>GOOGLE_MAPS_API_KEY</key>
 	<string>AIzaSyBvJI4of14qmp5fDZGRYHHMnS_KmAlH4x4</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Turtle Turning Pages needs your location to show books available near you and help you connect with nearby book lovers.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Turtle Turning Pages needs your location to show books available near you and notify you when new books are listed nearby.</string>
 </dict>
 </plist>
