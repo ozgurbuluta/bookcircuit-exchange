@@ -25,28 +25,14 @@ class AppRoutes {
   static const String proposeSwap = '/propose-swap/:bookId';
 }
 
-/// Listenable that notifies when auth state changes
-class AuthChangeNotifier extends ChangeNotifier {
-  AuthChangeNotifier(Ref ref) {
-    ref.listen<AuthState>(authProvider, (_, __) {
-      notifyListeners();
-    });
-  }
-}
-
-final _authChangeProvider = Provider((ref) => AuthChangeNotifier(ref));
-
 /// Router provider
 final routerProvider = Provider<GoRouter>((ref) {
-  final authChangeNotifier = ref.watch(_authChangeProvider);
+  final authState = ref.watch(authProvider);
 
   return GoRouter(
     initialLocation: AppRoutes.splash,
     debugLogDiagnostics: true,
-    refreshListenable: authChangeNotifier,
     redirect: (context, state) {
-      final authState = ref.read(authProvider);
-
       final isLoading = authState.isLoading;
       final isAuthenticated = authState.isAuthenticated;
       final currentPath = state.matchedLocation;
@@ -54,7 +40,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isOnAuthPage = currentPath == AppRoutes.signIn ||
                            currentPath == AppRoutes.signUp;
       final isOnSplash = currentPath == AppRoutes.splash;
-      final isOnOnboarding = currentPath == AppRoutes.onboarding;
 
       // Show splash while loading
       if (isLoading) {
@@ -63,13 +48,13 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // Authenticated users go to home
       if (isAuthenticated) {
-        if (isOnAuthPage || isOnSplash || isOnOnboarding) {
+        if (isOnAuthPage || isOnSplash) {
           return AppRoutes.home;
         }
         return null;
       }
 
-      // Not authenticated - go to sign in (skip onboarding for now to debug)
+      // Not authenticated - go to sign in
       if (!isOnAuthPage) {
         return AppRoutes.signIn;
       }
