@@ -62,7 +62,7 @@ export const RequestResponseModal = ({
 
       setLoadingBooks(true);
       try {
-        const books = await getUserBooks(user.id);
+        const books = await getUserBooks(user.uid);
         // Filter to only available books
         const availableBooks = books.filter(book => book.status === 'available');
         setMyBooks(availableBooks);

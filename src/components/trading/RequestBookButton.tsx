@@ -43,7 +43,7 @@ export const RequestBookButton = ({
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [message, setMessage] = useState('');
 
-  const isOwnBook = user?.id === ownerId;
+  const isOwnBook = user?.uid === ownerId;
 
   const handleRequestBook = async () => {
     if (!user) {
@@ -59,7 +59,7 @@ export const RequestBookButton = ({
     setLoading(true);
 
     try {
-      const result = await requestBook(bookId, user.id);
+      const result = await requestBook(bookId, user.uid);
 
       if (!result.success) {
         toast.error(result.error || 'Failed to request book');

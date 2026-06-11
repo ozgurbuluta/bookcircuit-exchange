@@ -85,7 +85,7 @@ const BookDetail = () => {
     if (!user || !book?.owner) return;
 
     // Don't start a conversation with yourself
-    if (user.id === book.owner.id) {
+    if (user.uid === book.owner.id) {
       toast({
         title: "Error",
         description: "This is your own book!",
@@ -182,7 +182,7 @@ const BookDetail = () => {
               <div className="mt-6 block md:hidden">
                 <OwnerCard
                   owner={book.owner}
-                  isOwnBook={user?.id === book.owner?.id}
+                  isOwnBook={user?.uid === book.owner?.id}
                   onContactClick={startConversation}
                   loading={startingChat}
                   book={book}
@@ -231,7 +231,7 @@ const BookDetail = () => {
               <div className="hidden md:block">
                 <OwnerCard
                   owner={book.owner}
-                  isOwnBook={user?.id === book.owner?.id}
+                  isOwnBook={user?.uid === book.owner?.id}
                   onContactClick={startConversation}
                   loading={startingChat}
                   book={book}

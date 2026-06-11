@@ -46,7 +46,7 @@ const Navbar = () => {
 
     try {
       setLoadingProfile(true);
-      const profile = await getProfileById(user.id);
+      const profile = await getProfileById(user.uid);
 
       if (profile) {
         setUserProfile({

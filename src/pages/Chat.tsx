@@ -99,7 +99,7 @@ const Chat = () => {
               <h1 className="text-2xl font-bold text-book-leather">Messages</h1>
             </div>
 
-            <ChatContainer userId={user?.id} selectedConversationId={conversationId} />
+            <ChatContainer userId={user?.uid} selectedConversationId={conversationId} />
           </div>
         </div>
       </main>

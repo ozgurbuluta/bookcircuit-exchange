@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Loader2, MessageCircle, CheckCircle, XCircle, RefreshCw, User, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { updateTradeStatus } from '@/lib/tradeService';
+import { getOrCreateConversation } from '@/lib/conversationService';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -49,10 +50,11 @@ export function TradeDetailsCard({
   const [loading, setLoading] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [showCounterModal, setShowCounterModal] = useState(false);
-  
+  const [openingChat, setOpeningChat] = useState(false);
+
   if (!user) return null;
   
-  const isUserInitiator = user.id === trade.initiator_id;
+  const isUserInitiator = user.uid === trade.initiator_id;
   const userItems = isUserInitiator ? trade.initiator_items : trade.recipient_items;
   const otherItems = isUserInitiator ? trade.recipient_items : trade.initiator_items;
   const otherUser = isUserInitiator ? 
@@ -76,6 +78,24 @@ export function TradeDetailsCard({
     }
   };
   
+  const handleOpenChat = async () => {
+    setOpeningChat(true);
+    try {
+      const result = await getOrCreateConversation(otherUser.id);
+      if (!result.success || !result.conversationId) {
+        throw new Error(result.error || 'Could not open conversation');
+      }
+      navigate(`/chat/${result.conversationId}`);
+    } catch (error) {
+      console.error('Error opening chat:', error);
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to open conversation'
+      );
+    } finally {
+      setOpeningChat(false);
+    }
+  };
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -267,9 +287,14 @@ export function TradeDetailsCard({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => navigate(`/messages/${otherUser.id}`)}
+              onClick={handleOpenChat}
+              disabled={openingChat}
             >
-              <MessageCircle className="h-4 w-4 mr-2" />
+              {openingChat ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <MessageCircle className="h-4 w-4 mr-2" />
+              )}
               Message
             </Button>
           </div>

@@ -26,7 +26,7 @@ const Profile = () => {
   const [updating, setUpdating] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [profile, setProfile] = useState<UserProfile>({
-    id: user?.id || '',
+    id: user?.uid || '',
     full_name: '',
     bio: '',
     location: '',
@@ -45,11 +45,11 @@ const Profile = () => {
     try {
       setLoading(true);
 
-      const data = await getProfileById(user?.id || '');
+      const data = await getProfileById(user?.uid || '');
 
       if (data) {
         setProfile({
-          id: user?.id || '',
+          id: user?.uid || '',
           full_name: data.full_name || '',
           bio: data.bio || '',
           location: data.location_city || '',
@@ -78,7 +78,7 @@ const Profile = () => {
     try {
       setUpdating(true);
 
-      const result = await updateProfile(user.id, {
+      const result = await updateProfile(user.uid, {
         full_name: profile.full_name,
         bio: profile.bio,
         location_city: profile.location,
@@ -123,7 +123,7 @@ const Profile = () => {
       }
 
       // Update profile with avatar URL
-      const updateResult = await updateProfile(user?.id || '', {
+      const updateResult = await updateProfile(user?.uid || '', {
         avatar_url: result.url
       });
 

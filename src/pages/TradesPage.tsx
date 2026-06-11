@@ -73,7 +73,7 @@ export default function TradesPage() {
         recipient_message: trade.recipient_message,
         initiator_items: trade.items?.filter(item => item.owner_id === trade.initiator_id) || [],
         recipient_items: trade.items?.filter(item => item.owner_id === trade.recipient_id) || [],
-        is_direct_request: trade.trade_type === 'direct_request',
+        is_direct_request: trade.is_direct_request || false,
         is_counteroffered: false
       }));
 
@@ -132,7 +132,7 @@ export default function TradesPage() {
         <h1 className="text-2xl font-bold mb-6">Trades</h1>
         <Card className="p-8 text-center">
           <p>Please log in to view your trades.</p>
-          <Button className="mt-4" onClick={() => navigate('/login')}>
+          <Button className="mt-4" onClick={() => navigate('/signin')}>
             Log In
           </Button>
         </Card>
@@ -219,7 +219,7 @@ export default function TradesPage() {
                         <div className="flex justify-between items-start">
                           <div>
                             <h3 className="font-medium">
-                              {user.id === trade.initiator_id
+                              {user.uid === trade.initiator_id
                                 ? `Trade with ${trade.recipient_name}`
                                 : `Trade with ${trade.initiator_name}`}
                             </h3>

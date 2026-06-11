@@ -256,7 +256,7 @@ const Dashboard = () => {
                     <h3 className="font-medium">Requested Books</h3>
                     <p className="text-sm text-muted-foreground">You've requested {requestedBooks.length} books</p>
                   </div>
-                  <Button onClick={() => navigate('/search')} variant="ghost" className="ml-auto">See</Button>
+                  <Button onClick={() => navigate('/home')} variant="ghost" className="ml-auto">See</Button>
                 </div>
 
                 <div className="flex items-center gap-4 p-4 rounded-lg bg-purple-500/10">
@@ -351,7 +351,7 @@ const Dashboard = () => {
                     You haven't requested any books yet.
                   </p>
                   <Button
-                    onClick={() => navigate('/search')}
+                    onClick={() => navigate('/home')}
                     className="mt-6"
                   >
                     Find Books to Request

@@ -41,7 +41,7 @@ export const InterestButton = ({
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [note, setNote] = useState('');
 
-  const isOwnBook = user?.id === ownerId;
+  const isOwnBook = user?.uid === ownerId;
 
   // Check if the user has already marked interest in this book
   useEffect(() => {
@@ -52,7 +52,7 @@ export const InterestButton = ({
       }
 
       try {
-        const result = await checkBookInterest(bookId, user.id);
+        const result = await checkBookInterest(bookId, user.uid);
 
         if (result.interested && result.interestId) {
           setIsInterested(true);

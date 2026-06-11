@@ -47,7 +47,7 @@ const RequestableBookCard: React.FC<RequestableBookCardProps> = ({
         const q = query(
           collection(db, 'bookRequests'),
           where('bookId', '==', book.id),
-          where('requesterId', '==', user.id),
+          where('requesterId', '==', user.uid),
           where('status', '==', 'pending')
         );
 
@@ -92,14 +92,14 @@ const RequestableBookCard: React.FC<RequestableBookCardProps> = ({
       return;
     }
 
-    if (user.id === book.user_id) {
+    if (user.uid === book.user_id) {
       toast.error('You cannot request your own book');
       return;
     }
 
     setRequesting(true);
     try {
-      const result = await requestBook(book.id, user.id);
+      const result = await requestBook(book.id, user.uid);
 
       if (!result.success) {
         throw new Error(result.error);
@@ -127,7 +127,7 @@ const RequestableBookCard: React.FC<RequestableBookCardProps> = ({
 
     setCancelling(true);
     try {
-      const result = await cancelBookRequest(requestId, user.id);
+      const result = await cancelBookRequest(requestId, user.uid);
 
       if (!result.success) {
         throw new Error(result.error);
@@ -151,7 +151,7 @@ const RequestableBookCard: React.FC<RequestableBookCardProps> = ({
       toast.error('You must be logged in to message book owners');
       return;
     }
-    if (user.id === book.user_id) {
+    if (user.uid === book.user_id) {
       toast.error('You cannot message yourself');
       return;
     }
@@ -231,7 +231,7 @@ const RequestableBookCard: React.FC<RequestableBookCardProps> = ({
             </div>
           )}
 
-          {user && user.id !== book.user_id && (
+          {user && user.uid !== book.user_id && (
             <div className="grid grid-cols-2 gap-2 w-full mt-1">
               {!isRequested ? (
                 <Button
@@ -269,7 +269,7 @@ const RequestableBookCard: React.FC<RequestableBookCardProps> = ({
             </div>
           )}
 
-          {user && user.id === book.user_id && (
+          {user && user.uid === book.user_id && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="w-full">
