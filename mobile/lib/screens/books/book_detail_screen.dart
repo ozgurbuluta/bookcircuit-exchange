@@ -43,6 +43,35 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
     );
   }
 
+  /// Create (or reuse) a conversation with the book owner, then open the chat.
+  /// We must navigate with a conversation ID, not the owner's user ID.
+  Future<void> _openChat(Book book) async {
+    // Capture context-bound objects before the async gap so we don't touch
+    // BuildContext after awaiting.
+    final router = GoRouter.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+
+    final conversation =
+        await ref.read(conversationActionsProvider.notifier).startConversation(
+              otherUserId: book.userId,
+              bookId: book.id,
+            );
+
+    if (conversation != null) {
+      router.push('/chat/${conversation.id}?userId=${book.userId}&bookId=${book.id}');
+    } else {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not open conversation. Please try again.',
+            style: AppTypography.sansRegular.copyWith(color: Colors.white),
+          ),
+          backgroundColor: AppColors.ink2,
+        ),
+      );
+    }
+  }
+
   Future<void> _requestBook(Book book) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -310,7 +339,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 20),
                           child: GestureDetector(
-                            onTap: () => context.push('/chat/${book.userId}'),
+                            onTap: () => _openChat(book),
                             child: Container(
                               padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(

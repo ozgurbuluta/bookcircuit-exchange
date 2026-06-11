@@ -9,6 +9,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../config/theme.dart';
 import '../../models/book.dart';
 import '../../providers/providers.dart';
+import '../../services/firebase_service.dart';
 import '../../services/open_library_service.dart';
 
 class AddBookScreen extends ConsumerStatefulWidget {
@@ -188,6 +189,25 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
     final currentUser = ref.read(currentUserProvider);
     if (currentUser == null) return;
 
+    // Upload a locally-picked cover image to Storage and use its URL.
+    String? coverUrl = _coverUrl;
+    if (_coverImage != null) {
+      try {
+        coverUrl = await FirebaseService.uploadBookCover(_coverImage!);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to upload cover image: $e')),
+          );
+        }
+        return;
+      }
+    }
+
+    // Copy the owner's location onto the listing so it can appear in radius
+    // searches and on the map.
+    final profile = ref.read(currentProfileProvider);
+
     final book = Book(
       id: '',
       userId: currentUser.uid,
@@ -200,7 +220,10 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
       isbn: _isbnController.text.trim().isEmpty
           ? null
           : _isbnController.text.trim(),
-      coverImgUrl: _coverUrl,
+      coverImgUrl: coverUrl,
+      locationText: profile?.formattedLocation,
+      locationLat: profile?.locationLat,
+      locationLng: profile?.locationLng,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
@@ -208,7 +231,12 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
     final created = await ref.read(bookActionsProvider.notifier).createBook(book);
     if (created != null && mounted) {
       ref.invalidate(myBooksProvider);
+      ref.invalidate(booksProvider);
       context.pop();
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to add book. Please try again.')),
+      );
     }
   }
 

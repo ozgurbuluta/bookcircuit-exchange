@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/models.dart';
 import '../services/firebase_service.dart';
@@ -14,10 +15,12 @@ enum TradeFilter {
     switch (this) {
       case TradeFilter.all:
         return null;
+      // 'incoming'/'outgoing' are not trade statuses; these are resolved with
+      // client-side initiator/recipient filtering instead (see tradesProvider).
       case TradeFilter.incoming:
-        return 'incoming';
+        return null;
       case TradeFilter.outgoing:
-        return 'outgoing';
+        return null;
       case TradeFilter.done:
         return 'completed';
     }
@@ -95,8 +98,8 @@ class TradeActionsNotifier extends StateNotifier<AsyncValue<void>> {
         'recipientMessage': '',
         'isDirectRequest': theirBookIds.length == 1 && myBookIds.isEmpty,
         'isCounteroffered': false,
-        'createdAt': DateTime.now(),
-        'updatedAt': DateTime.now(),
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
       });
 
       // Add trade items
@@ -107,7 +110,7 @@ class TradeActionsNotifier extends StateNotifier<AsyncValue<void>> {
           'ownerId': currentUser.uid,
           'recipientId': partnerId,
           'itemType': 'book',
-          'createdAt': DateTime.now(),
+          'createdAt': FieldValue.serverTimestamp(),
         });
       }
 
@@ -118,7 +121,7 @@ class TradeActionsNotifier extends StateNotifier<AsyncValue<void>> {
           'ownerId': partnerId,
           'recipientId': currentUser.uid,
           'itemType': 'book',
-          'createdAt': DateTime.now(),
+          'createdAt': FieldValue.serverTimestamp(),
         });
       }
 

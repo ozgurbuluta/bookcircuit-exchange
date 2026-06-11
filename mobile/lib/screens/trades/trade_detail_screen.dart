@@ -237,7 +237,20 @@ class TradeDetailScreen extends ConsumerWidget {
                       break;
                     case 'message':
                       if (partner != null) {
-                        context.push('/chat/new?userId=${partner.id}');
+                        final conversation = await ref
+                            .read(conversationActionsProvider.notifier)
+                            .startConversation(otherUserId: partner.id);
+                        if (conversation != null && context.mounted) {
+                          context.push(
+                            '/chat/${conversation.id}?userId=${partner.id}',
+                          );
+                        } else if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Could not open conversation'),
+                            ),
+                          );
+                        }
                       }
                       return;
                   }

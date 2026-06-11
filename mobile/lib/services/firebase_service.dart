@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -8,6 +9,32 @@ class FirebaseService {
   static FirebaseAuth get auth => FirebaseAuth.instance;
   static FirebaseFirestore get db => FirebaseFirestore.instance;
   static FirebaseStorage get storage => FirebaseStorage.instance;
+
+  // ============ STORAGE ============
+
+  /// Upload an image file to the given storage [path] and return its download URL.
+  static Future<String> uploadImage(File file, String path) async {
+    final ref = storage.ref(path);
+    await ref.putFile(file);
+    return ref.getDownloadURL();
+  }
+
+  /// Upload a book cover for the current user. Stored under
+  /// `book-covers/{uid}/...` to satisfy the storage security rules.
+  static Future<String> uploadBookCover(File file) async {
+    final uid = currentUser?.uid;
+    if (uid == null) throw Exception('Not authenticated');
+    final fileName = 'cover-${DateTime.now().millisecondsSinceEpoch}.jpg';
+    return uploadImage(file, 'book-covers/$uid/$fileName');
+  }
+
+  /// Upload an avatar for the current user. Stored under `avatars/{uid}/...`.
+  static Future<String> uploadAvatar(File file) async {
+    final uid = currentUser?.uid;
+    if (uid == null) throw Exception('Not authenticated');
+    final fileName = 'avatar-${DateTime.now().millisecondsSinceEpoch}.jpg';
+    return uploadImage(file, 'avatars/$uid/$fileName');
+  }
 
   // ============ AUTH ============
 
@@ -483,10 +510,7 @@ class FirebaseService {
       id: doc.id,
       initiatorId: data['initiatorId'] ?? '',
       recipientId: data['recipientId'] ?? '',
-      status: TradeStatus.values.firstWhere(
-        (e) => e.name == data['status'],
-        orElse: () => TradeStatus.pending,
-      ),
+      status: TradeStatus.fromString(data['status'] as String? ?? 'pending'),
       initiatorMessage: data['initiatorMessage'],
       recipientMessage: data['recipientMessage'],
       isDirectRequest: data['isDirectRequest'] ?? false,

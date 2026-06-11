@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../config/theme.dart';
 import '../../providers/providers.dart';
+import '../../services/firebase_service.dart';
 import '../../widgets/widgets.dart';
 
 class EditProfileScreen extends ConsumerStatefulWidget {
@@ -118,15 +119,35 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     final currentProfile = ref.read(currentProfileProvider);
     if (currentProfile == null) return;
 
+    // Upload a newly-picked avatar to Storage and use its download URL.
+    String? avatarUrl = currentProfile.avatarUrl;
+    if (_selectedImage != null) {
+      try {
+        avatarUrl = await FirebaseService.uploadAvatar(_selectedImage!);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to upload photo: $e')),
+          );
+        }
+        return;
+      }
+    }
+
     final updated = currentProfile.copyWith(
       fullName: _nameController.text.trim(),
       bio: _bioController.text.trim(),
       website: _websiteController.text.trim(),
+      avatarUrl: avatarUrl,
     );
 
     final success = await ref.read(authProvider.notifier).updateProfile(updated);
     if (success && mounted) {
       context.pop();
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to update profile. Please try again.')),
+      );
     }
   }
 

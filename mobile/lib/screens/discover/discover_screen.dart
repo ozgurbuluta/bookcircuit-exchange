@@ -21,6 +21,14 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
   double _radius = 5.0;
   bool _isMapView = false;
   String _sortBy = 'distance';
+  LatLngPoint? _location;
+
+  @override
+  void initState() {
+    super.initState();
+    // Resolve the user's location so the radius filter actually applies.
+    Future.microtask(_resolveLocation);
+  }
 
   @override
   void dispose() {
@@ -29,11 +37,20 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
     super.dispose();
   }
 
+  Future<void> _resolveLocation() async {
+    final location = await ref.read(currentLocationProvider.future);
+    if (!mounted) return;
+    setState(() => _location = location);
+    _updateSearch();
+  }
+
   void _updateSearch() {
     ref.read(bookSearchParamsProvider.notifier).state = BookSearchParams(
       query: _searchController.text.isEmpty ? null : _searchController.text,
       genre: _selectedGenre == 'All' ? null : _selectedGenre,
       radius: _radius,
+      lat: _location?.lat,
+      lng: _location?.lng,
     );
   }
 

@@ -30,10 +30,11 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // Enable Firestore offline persistence for faster loading
+  // Enable Firestore offline persistence for faster loading. Cap the cache at
+  // ~100MB rather than unlimited to avoid unbounded disk growth on heavy users.
   FirebaseFirestore.instance.settings = const Settings(
     persistenceEnabled: true,
-    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+    cacheSizeBytes: 100 * 1024 * 1024,
   );
 
   runApp(

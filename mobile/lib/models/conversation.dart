@@ -3,13 +3,13 @@ import 'profile.dart';
 
 /// Conversation participant model
 class ConversationParticipant {
-  final String odroid;
+  final String userId;
   final String conversationId;
   final DateTime createdAt;
   final Profile? user;
 
   ConversationParticipant({
-    required this.odroid,
+    required this.userId,
     required this.conversationId,
     required this.createdAt,
     this.user,
@@ -17,7 +17,7 @@ class ConversationParticipant {
 
   factory ConversationParticipant.fromJson(Map<String, dynamic> json) {
     return ConversationParticipant(
-      odroid: json['user_id'] as String,
+      userId: json['user_id'] as String,
       conversationId: json['conversation_id'] as String,
       createdAt: DateTime.parse(json['created_at'] as String),
       user: json['user'] != null
