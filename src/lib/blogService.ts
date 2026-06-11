@@ -1,3 +1,4 @@
+import DOMPurify from 'dompurify';
 import { db } from './firebase';
 import { collection, query, orderBy, limit as limitFn, getDocs, where } from 'firebase/firestore';
 import { BlogPost } from './types';
@@ -117,9 +118,18 @@ export const formatBlogDate = (dateString: string): string => {
   });
 };
 
-// Convert markdown content to HTML (basic implementation)
+// Convert markdown content to HTML (basic implementation).
+// The output is sanitized with DOMPurify before being returned so that any
+// raw HTML or unsafe URL schemes (e.g. javascript:) authored in a post cannot
+// execute when rendered via dangerouslySetInnerHTML.
 export const markdownToHtml = (markdown: string): string => {
-  return markdown
+  // Escape any raw HTML the author may have embedded before we add our own tags.
+  const escaped = markdown
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  const html = escaped
     // Headers
     .replace(/^## (.*$)/gim, '<h2>$1</h2>')
     .replace(/^### (.*$)/gim, '<h3>$1</h3>')
@@ -137,4 +147,10 @@ export const markdownToHtml = (markdown: string): string => {
     .replace(/\[(.*?)\]\((.*?)\)/gim, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
     // Line breaks
     .replace(/\n/gim, '<br />');
+
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['h2', 'h3', 'h4', 'strong', 'em', 'ul', 'li', 'a', 'br', 'p'],
+    ALLOWED_ATTR: ['href', 'target', 'rel'],
+    ALLOWED_URI_REGEXP: /^(?:https?|mailto):/i,
+  });
 };

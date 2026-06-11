@@ -11,6 +11,10 @@ service firebase.storage {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    function isAdmin() {
+      return isAuthenticated() && request.auth.token.admin == true;
+    }
+
     function isValidImage() {
       return request.resource.contentType.matches('image/.*') &&
              request.resource.size < 5 * 1024 * 1024; // 5MB max
@@ -32,10 +36,10 @@ service firebase.storage {
       allow write: if isOwner(userId) && isValidImage();
     }
 
-    // Blog images (for admin users)
+    // Blog images (admin only)
     match /blog/{fileName} {
       allow read: if true;
-      allow write: if isAuthenticated() && isValidImage();
+      allow write: if isAdmin() && isValidImage();
     }
   }
 }

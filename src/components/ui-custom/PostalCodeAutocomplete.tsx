@@ -16,12 +16,9 @@ const loadGoogleMapsScript = (apiKey: string, callback: (success: boolean, error
 
   // Only load the script if it hasn't been loaded yet
   if (!window.google || !window.google.maps) {
-    console.log('Loading Google Maps script...');
-    
     // Create a global callback function
     const callbackName = `googleMapsCallback_${Date.now()}`;
     (window as any)[callbackName] = () => {
-      console.log('Google Maps script loaded successfully via callback');
       delete (window as any)[callbackName]; // Clean up
       callback(true);
     };
@@ -30,11 +27,6 @@ const loadGoogleMapsScript = (apiKey: string, callback: (success: boolean, error
     script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&callback=${callbackName}`;
     script.async = true;
     script.defer = true;
-    
-    script.onload = () => {
-      console.log('Google Maps script onload event fired');
-      // The actual initialization will happen via the callback
-    };
     
     script.onerror = () => {
       console.error('Failed to load Google Maps script');
@@ -53,7 +45,6 @@ const loadGoogleMapsScript = (apiKey: string, callback: (success: boolean, error
     
     document.head.appendChild(script);
   } else {
-    console.log('Google Maps already loaded');
     callback(true);
   }
 };
@@ -202,7 +193,6 @@ export function PostalCodeAutocomplete({
             error: null
           });
           
-          console.log('Google Maps services initialized successfully');
         } catch (err) {
           console.error('Failed to initialize Google Maps services:', err);
           setApiStatus({

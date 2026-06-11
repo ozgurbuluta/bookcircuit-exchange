@@ -34,14 +34,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   // Fetch user profile from Firestore
   const fetchProfile = async (userId: string): Promise<Profile | null> => {
-    console.log(`[AuthContext] Fetching profile for user: ${userId}`);
     try {
       const profileRef = doc(db, 'users', userId);
       const profileSnap = await getDoc(profileRef);
 
       if (profileSnap.exists()) {
         const data = profileSnap.data();
-        console.log('[AuthContext] Profile found:', data);
         return {
           id: profileSnap.id,
           full_name: data.fullName || '',
@@ -59,7 +57,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           updated_at: data.updatedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
         } as Profile;
       } else {
-        console.log('[AuthContext] Profile not found, will create default');
         return null;
       }
     } catch (error: any) {
@@ -70,7 +67,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   // Create a default profile for a new user
   const createDefaultProfile = async (userId: string, email: string, fullName?: string): Promise<Profile | null> => {
-    console.log(`[AuthContext] Creating default profile for user: ${userId}`);
     try {
       const profileRef = doc(db, 'users', userId);
       const profileData = {
@@ -91,7 +87,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       };
 
       await setDoc(profileRef, profileData);
-      console.log('[AuthContext] Default profile created');
 
       return {
         id: userId,
@@ -115,7 +110,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   // Refresh the user's profile data
   const refreshProfile = async () => {
-    console.log('[AuthContext] refreshProfile called');
     if (user) {
       const profileData = await fetchProfile(user.uid);
       if (profileData) {
@@ -127,11 +121,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   // Listen to auth state changes
   useEffect(() => {
     let mounted = true;
-    console.log('[AuthContext] Setting up auth state listener');
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log('[AuthContext] Auth state changed:', firebaseUser?.uid);
-
       if (!mounted) return;
 
       if (firebaseUser) {
