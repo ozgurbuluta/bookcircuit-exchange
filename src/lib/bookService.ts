@@ -731,20 +731,3 @@ export const removeBookInterest = async (
   }
 };
 
-// Test function for debugging
-export const testGeographyColumn = async (): Promise<{ success: boolean; message: string }> => {
-  try {
-    const books = await getAllBooks(5);
-    console.log('Sample books:', books);
-    return {
-      success: true,
-      message: `Found ${books.length} books in the database`
-    };
-  } catch (error) {
-    console.error('Error testing:', error);
-    return {
-      success: false,
-      message: error instanceof Error ? error.message : 'Unknown error occurred'
-    };
-  }
-};
