@@ -30,10 +30,11 @@ export const uploadAvatar = async (
   }
 };
 
-// Upload book cover image
+// Upload book cover image. Stored under the owner's folder so it satisfies
+// the `book-covers/{userId}` storage rule (no book ID needed at creation time).
 export const uploadBookCover = async (
-  file: File,
-  bookId: string
+  file: Blob,
+  fileExt = 'jpg'
 ): Promise<{ success: boolean; url?: string; error?: string }> => {
   try {
     const user = auth.currentUser;
@@ -41,9 +42,8 @@ export const uploadBookCover = async (
       return { success: false, error: 'Not authenticated' };
     }
 
-    const fileExt = file.name.split('.').pop();
     const fileName = `cover-${Date.now()}.${fileExt}`;
-    const filePath = `books/${bookId}/${fileName}`;
+    const filePath = `book-covers/${user.uid}/${fileName}`;
 
     const storageRef = ref(storage, filePath);
     await uploadBytes(storageRef, file);

@@ -49,6 +49,17 @@ export interface Book {
 
 export type BookCondition = Book['condition'];
 
+// Single source of truth for selectable book conditions. Use this in every
+// book form so the options can never drift out of sync with the Book type.
+export const BOOK_CONDITIONS: readonly BookCondition[] = [
+  'New',
+  'Like New',
+  'Very Good',
+  'Good',
+  'Acceptable',
+  'Poor',
+] as const;
+
 // New type extending Book with request details
 export interface BookWithRequestDetails extends Book {
   request_id?: string;

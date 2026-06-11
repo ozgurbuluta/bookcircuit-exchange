@@ -6,9 +6,10 @@ import * as z from 'zod';
 import { Loader2, Save, ArrowLeft, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { auth } from '../lib/firebase';
+import { useAuth } from '@/context/AuthContext';
 import { getBookById, updateBook } from '../lib/bookService';
-import { BookCondition, LocationData, Book } from '../lib/types';
+import { uploadBookCover } from '../lib/storageService';
+import { BookCondition, LocationData, Book, BOOK_CONDITIONS } from '../lib/types';
 
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -44,7 +45,7 @@ const bookFormSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   author: z.string().optional(),
   location_text: z.string().min(1, 'Location is required'),
-  condition: z.enum(['New', 'Like New', 'Very Good', 'Good', 'Acceptable', 'Poor']),
+  condition: z.enum(BOOK_CONDITIONS as unknown as [BookCondition, ...BookCondition[]]),
   cover_img_url: z.string().optional(),
   isbn: z.string().optional(),
   description: z.string().optional(),
@@ -56,12 +57,13 @@ type BookFormValues = z.infer<typeof bookFormSchema>;
 export default function EditBook() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>(); // Get book ID from URL params
-  const [user, setUser] = useState<any>(null);
+  const { user, loading: authLoading } = useAuth();
   const [book, setBook] = useState<Book | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingBook, setLoadingBook] = useState(true);
   const [locationData, setLocationData] = useState<LocationData | null>(null);
   const [customImagePreview, setCustomImagePreview] = useState<string | null>(null);
+  const [customImageBlob, setCustomImageBlob] = useState<Blob | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Initialize form with empty values (will be populated once book is loaded)
@@ -78,17 +80,12 @@ export default function EditBook() {
     },
   });
 
-  // Check if user is authenticated
+  // Redirect unauthenticated users once auth state has resolved
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((currentUser) => {
-      if (currentUser) {
-        setUser(currentUser);
-      } else {
-        navigate('/signin');
-      }
-    });
-    return () => unsubscribe();
-  }, [navigate]);
+    if (!authLoading && !user) {
+      navigate('/signin');
+    }
+  }, [user, authLoading, navigate]);
   
   // Load book data
   useEffect(() => {
@@ -107,7 +104,15 @@ export default function EditBook() {
           navigate('/dashboard');
           return;
         }
-        
+
+        // Ownership guard: only the owner may edit a listing. Firestore rules
+        // enforce this server-side too; this provides immediate UX feedback.
+        if (user && loadedBook.user_id && loadedBook.user_id !== user.uid) {
+          toast.error('You can only edit your own books');
+          navigate('/dashboard');
+          return;
+        }
+
         setBook(loadedBook);
         
         // Populate form with book data
@@ -191,11 +196,19 @@ export default function EditBook() {
           const ctx = canvas.getContext('2d');
           ctx?.drawImage(img, 0, 0, width, height);
           
-          // Convert to a data URL with reduced quality
+          // Convert to a data URL for local preview only
           const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-          
           setCustomImagePreview(dataUrl);
-          form.setValue('cover_img_url', dataUrl);
+
+          // Capture a Blob to upload to Storage on submit (avoids storing
+          // base64 in the Firestore document)
+          canvas.toBlob(
+            (blob) => {
+              if (blob) setCustomImageBlob(blob);
+            },
+            'image/jpeg',
+            0.8
+          );
         };
         img.src = e.target?.result as string;
       };
@@ -206,6 +219,7 @@ export default function EditBook() {
   // Handle removing custom image
   const handleRemoveCustomImage = () => {
     setCustomImagePreview(null);
+    setCustomImageBlob(null);
     // Restore original book cover if available
     if (book && book.cover_img_url) {
       form.setValue('cover_img_url', book.cover_img_url);
@@ -240,13 +254,22 @@ export default function EditBook() {
 
     setLoading(true);
     try {
-      // Check if the cover_img_url is a data URL that might be too large
+      // If the user picked a new custom cover, upload it to Storage and store
+      // only the resulting download URL (never base64 in the Firestore document).
       let coverImgUrl = data.cover_img_url;
-      if (coverImgUrl && coverImgUrl.startsWith('data:') && coverImgUrl.length > 500000) {
-        console.warn('Image is very large, might cause issues with database storage');
-        // Optionally add your fallback logic here if needed
+      if (customImageBlob) {
+        const uploadResult = await uploadBookCover(customImageBlob);
+        if (!uploadResult.success || !uploadResult.url) {
+          throw new Error(uploadResult.error || 'Failed to upload cover image');
+        }
+        coverImgUrl = uploadResult.url;
+      } else if (coverImgUrl && coverImgUrl.startsWith('data:')) {
+        // Defensive: never persist a data URL into Firestore.
+        coverImgUrl = book?.cover_img_url && !book.cover_img_url.startsWith('data:')
+          ? book.cover_img_url
+          : '';
       }
-      
+
       // Prepare book data for update
       const bookData = {
         title: data.title,
@@ -264,9 +287,6 @@ export default function EditBook() {
         })
       };
 
-      console.log('[EditBook.tsx] onSubmit - id:', id);
-      console.log('[EditBook.tsx] onSubmit - bookData:', JSON.stringify(bookData, null, 2));
-      
       const result = await updateBook(id, bookData);
       
       if (result.success) {
@@ -377,13 +397,11 @@ export default function EditBook() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="New">New</SelectItem>
-                            <SelectItem value="Like New">Like New</SelectItem>
-                            <SelectItem value="Very Good">Very Good</SelectItem>
-                            <SelectItem value="Good">Good</SelectItem>
-                            <SelectItem value="Acceptable">Acceptable</SelectItem>
-                            <SelectItem value="Fair">Fair</SelectItem>
-                            <SelectItem value="Poor">Poor</SelectItem>
+                            {BOOK_CONDITIONS.map((condition) => (
+                              <SelectItem key={condition} value={condition}>
+                                {condition}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                         <FormMessage />
