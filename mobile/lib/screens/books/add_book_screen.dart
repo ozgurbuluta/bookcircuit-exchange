@@ -10,7 +10,7 @@ import '../../config/theme.dart';
 import '../../models/book.dart';
 import '../../providers/providers.dart';
 import '../../services/firebase_service.dart';
-import '../../services/open_library_service.dart';
+import '../../services/google_books_service.dart';
 
 class AddBookScreen extends ConsumerStatefulWidget {
   const AddBookScreen({super.key});
@@ -32,10 +32,10 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
   File? _coverImage;
   String? _coverUrl;
 
-  List<OpenLibraryBook> _searchResults = [];
+  List<GoogleBook> _searchResults = [];
   bool _isSearching = false;
   Timer? _debounce;
-  OpenLibraryBook? _selectedBook;
+  GoogleBook? _selectedBook;
 
   @override
   void dispose() {
@@ -60,8 +60,8 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
 
     setState(() => _isSearching = true);
 
-    _debounce = Timer(const Duration(milliseconds: 400), () async {
-      final results = await OpenLibraryService.searchBooks(query);
+    _debounce = Timer(const Duration(milliseconds: 300), () async {
+      final results = await GoogleBooksService.searchBooks(query);
       if (mounted) {
         setState(() {
           _searchResults = results;
@@ -71,7 +71,7 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
     });
   }
 
-  void _selectBook(OpenLibraryBook book) {
+  void _selectBook(GoogleBook book) {
     HapticFeedback.selectionClick();
     setState(() {
       _selectedBook = book;
