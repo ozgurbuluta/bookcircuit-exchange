@@ -15,6 +15,7 @@ A community-driven book exchange iOS app connecting local book lovers to share, 
 | Home Screen | ✅ Done | Book carousel, search, FAB for adding books |
 | Book Search (Add) | ✅ Done | Google Books API integration |
 | Add Book | ✅ Done | Auto-fill from search, camera/gallery upload |
+| Scan a Shelf | 🚧 In progress | Photo → AI detects books → bulk add (backend done) |
 | Book Details | ✅ Done | Full book info, owner details, condition |
 | Profile | ✅ Done | Edit profile, location, settings |
 | Discover/Map | ✅ Done | Google Maps with book markers |
@@ -38,6 +39,7 @@ A community-driven book exchange iOS app connecting local book lovers to share, 
 | Navigation | GoRouter 14.x |
 | Backend | Firebase (Firestore, Auth, Storage) |
 | Maps | Google Maps Flutter |
+| AI Vision | Firebase AI Logic (Gemini Flash) |
 | Book Search | Google Books API |
 | Image Caching | cached_network_image |
 | HTTP | http package |

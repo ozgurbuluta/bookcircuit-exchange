@@ -156,6 +156,19 @@ class BookActionsNotifier extends StateNotifier<AsyncValue<void>> {
     }
   }
 
+  /// Create several books at once (shelf scanner). Returns the number created.
+  Future<int> createBooks(List<Book> books) async {
+    state = const AsyncValue.loading();
+    try {
+      final count = await FirebaseService.createBooks(books);
+      state = const AsyncValue.data(null);
+      return count;
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+      return 0;
+    }
+  }
+
   /// Update a book
   Future<Book?> updateBook(Book book) async {
     state = const AsyncValue.loading();

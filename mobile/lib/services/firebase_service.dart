@@ -240,6 +240,45 @@ class FirebaseService {
     return _docToBook(newDoc);
   }
 
+  /// Create several books in a single atomic batch (used by the shelf scanner).
+  ///
+  /// Returns the number of books written. Firestore batches are capped at 500
+  /// writes, which is far above the scanner's per-scan limit.
+  static Future<int> createBooks(List<Book> books) async {
+    if (books.isEmpty) return 0;
+
+    final batch = db.batch();
+    for (final book in books) {
+      final docRef = db.collection('books').doc();
+      batch.set(docRef, {
+        'userId': book.userId,
+        'title': book.title,
+        'author': book.author,
+        'description': book.description,
+        'condition': book.condition.name,
+        'isbn': book.isbn,
+        'coverImgUrl': book.coverImgUrl,
+        'publisher': book.publisher,
+        'publicationYear': book.publicationYear,
+        'language': book.language,
+        'pages': book.pages,
+        'genres': book.genres,
+        'locationText': book.locationText,
+        'postalCode': book.postalCode,
+        'locationLat': book.locationLat,
+        'locationLng': book.locationLng,
+        'status': book.status.name,
+        'tradeCount': 0,
+        'interestCount': 0,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }
+
+    await batch.commit();
+    return books.length;
+  }
+
   /// Update book
   static Future<Book?> updateBook(Book book) async {
     await db.collection('books').doc(book.id).update({
