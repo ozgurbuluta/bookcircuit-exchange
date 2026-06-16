@@ -2,10 +2,13 @@
 
 A community-driven book exchange iOS app connecting local book lovers to share, trade, and discover books.
 
-## Current Status (v1.0.0 Build 3)
+## Current Status (v1.0.0 Build 4)
 
 **Stage**: TestFlight Ready  
 **Last Updated**: June 2026
+
+> **Build 4 highlight:** "Scan a Shelf" — photograph a bookcase and AI bulk-adds
+> the books (see the section below). Requires Firebase AI Logic enabled.
 
 ### What's Working
 
