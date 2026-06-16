@@ -20,6 +20,7 @@ Turtle Turning Pages helps users exchange books with others nearby. List your bo
 
 - **Book Discovery** - Find books by title, author, or location radius
 - **Smart Add** - Search Google Books to auto-fill book details
+- **Scan a Shelf** - Photograph a bookshelf and AI bulk-adds the books (iOS)
 - **Map View** - See available books on an interactive map
 - **Trading System** - Request, accept, or decline book trades
 - **Real-time Chat** - Coordinate exchanges with other users
@@ -53,6 +54,7 @@ Turtle Turning Pages helps users exchange books with others nearby. List your bo
 | GoRouter | Navigation |
 | Google Maps Flutter | Map display |
 | Google Books API | Book search |
+| Firebase AI Logic | Gemini Flash vision (shelf scan) |
 
 ## Quick Start
 
@@ -200,6 +202,7 @@ flutter build ios --release
 | Firebase | Configured in code | See firebase_options.dart |
 | Google Maps | `GOOGLE_MAPS_API_KEY` | Maps SDK for iOS enabled |
 | Google Books | None | Public API, no key needed |
+| Firebase AI Logic | None (in-app) | Enable the API in Firebase console for shelf scan |
 
 ## Troubleshooting
 
