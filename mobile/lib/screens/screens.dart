@@ -15,4 +15,6 @@ export 'profile/edit_profile_screen.dart';
 export 'books/book_detail_screen.dart';
 export 'books/add_book_screen.dart';
 export 'books/edit_book_screen.dart';
+export 'books/scan_shelf_screen.dart';
+export 'books/scan_review_screen.dart';
 export 'books/propose_swap_screen.dart';

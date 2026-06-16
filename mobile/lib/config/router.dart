@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../models/models.dart';
 import '../providers/auth_provider.dart';
 import '../screens/screens.dart';
 import 'theme.dart';
@@ -21,6 +22,8 @@ class AppRoutes {
   static const String tradeDetail = '/trade/:id';
   static const String chat = '/chat/:id';
   static const String addBook = '/add-book';
+  static const String scanShelf = '/scan-shelf';
+  static const String scanReview = '/scan-review';
   static const String editBook = '/edit-book/:id';
   static const String editProfile = '/edit-profile';
   static const String proposeSwap = '/propose-swap/:bookId';
@@ -144,6 +147,17 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.addBook,
         builder: (context, state) => const AddBookScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.scanShelf,
+        builder: (context, state) => const ScanShelfScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.scanReview,
+        builder: (context, state) {
+          final books = (state.extra as List<DetectedBook>?) ?? const [];
+          return ScanReviewScreen(books: books);
+        },
       ),
       GoRoute(
         path: AppRoutes.editBook,

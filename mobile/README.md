@@ -15,7 +15,7 @@ A community-driven book exchange iOS app connecting local book lovers to share, 
 | Home Screen | ✅ Done | Book carousel, search, FAB for adding books |
 | Book Search (Add) | ✅ Done | Google Books API integration |
 | Add Book | ✅ Done | Auto-fill from search, camera/gallery upload |
-| Scan a Shelf | 🚧 In progress | Photo → AI detects books → bulk add (backend done) |
+| Scan a Shelf | ✅ Done | Photo → Gemini detects books → review/edit → bulk add |
 | Book Details | ✅ Done | Full book info, owner details, condition |
 | Profile | ✅ Done | Edit profile, location, settings |
 | Discover/Map | ✅ Done | Google Maps with book markers |
@@ -23,6 +23,26 @@ A community-driven book exchange iOS app connecting local book lovers to share, 
 | Messages | ✅ Done | Real-time chat with Firebase |
 | Pull-to-refresh | ✅ Done | All list screens |
 | Offline Caching | ✅ Done | Firestore persistence enabled |
+
+### Scan a Shelf (AI bulk add)
+
+Photograph a bookshelf and the app recognizes every book it can read, then lets
+you review, edit, and add them all at once.
+
+- **Entry**: Home → **+** FAB → "Scan a shelf"
+- **Detection**: Gemini Flash (via Firebase AI Logic) returns a structured list
+  of `{title, author}` from the photo (`bookshelf_scanner_service.dart`)
+- **Enrichment**: each detection is matched against Google Books for cover,
+  ISBN, year, and description
+- **Review**: edit title/author/condition per book, set condition in bulk,
+  drop wrong detections, toggle which to include; duplicates already in your
+  library are flagged
+- **Bulk add**: written in a single Firestore batch (`FirebaseService.createBooks`)
+
+> **Setup required:** enable **Firebase AI Logic** in the Firebase console for
+> the `turtle-turning-pages` project (Gemini Developer API backend, which has a
+> free tier). App Check is recommended to protect the endpoint. Until enabled,
+> scanning will return an error.
 
 ### Known Issues
 
