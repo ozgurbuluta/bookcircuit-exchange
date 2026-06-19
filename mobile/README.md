@@ -9,6 +9,11 @@ A community-driven book exchange iOS app connecting local book lovers to share, 
 
 > **Build 4 highlight:** "Scan a Shelf" — photograph a bookcase and AI bulk-adds
 > the books (see the section below). Requires Firebase AI Logic enabled.
+>
+> **Build 5 improvements:** Language + per-book location (current GPS or manual)
+> on Add Book; full (uncropped) cover on book detail with distance-to-book;
+> working share button; Discover "Request" now sends a real request and is
+> hidden for your own books.
 
 ### What's Working
 

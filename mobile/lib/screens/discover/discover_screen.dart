@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../config/theme.dart';
+import '../../config/router.dart';
 import '../../models/book.dart';
 import '../../providers/providers.dart';
 import '../../widgets/widgets.dart';
@@ -75,10 +76,67 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
     );
   }
 
+  /// Send a trade request for [book], then jump to the Trades tab.
+  Future<void> _requestBook(Book book) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.paper,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text('Request this book?',
+            style: AppTypography.serifSemiBold.copyWith(fontSize: 20, color: AppColors.ink)),
+        content: Text(
+          'This will send a request to ${book.owner?.displayName ?? 'the owner'} to start a trade.',
+          style: AppTypography.sansRegular.copyWith(fontSize: 14, color: AppColors.ink2),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Cancel',
+                style: AppTypography.sansSemiBold.copyWith(color: AppColors.ink2)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Send Request'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final router = GoRouter.of(context);
+    final trade = await ref.read(tradeActionsProvider.notifier).createTrade(
+          partnerId: book.userId,
+          myBookIds: [],
+          theirBookIds: [book.id],
+        );
+    if (!mounted) return;
+
+    if (trade != null) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Request sent to ${book.owner?.displayName ?? 'owner'}',
+            style: AppTypography.sansRegular.copyWith(color: Colors.white),
+          ),
+          backgroundColor: AppColors.sage,
+        ),
+      );
+      router.go(AppRoutes.trades);
+    } else {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not send request. Please try again.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final genres = ref.watch(genresProvider);
     final booksAsync = ref.watch(booksProvider);
+    final currentUserId = ref.watch(currentUserProvider)?.uid;
 
     return GestureDetector(
       onTap: () => _searchFocusNode.unfocus(),
@@ -300,7 +358,7 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
                     ? _buildEmptyState()
                     : _isMapView
                         ? _buildMapView(books)
-                        : _buildListView(books),
+                        : _buildListView(books, currentUserId),
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (error, _) => Center(child: Text('Error: $error')),
               ),
@@ -370,12 +428,13 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
     );
   }
 
-  Widget _buildListView(List books) {
+  Widget _buildListView(List books, String? currentUserId) {
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       itemCount: books.length,
       itemBuilder: (context, index) {
-        final book = books[index];
+        final book = books[index] as Book;
+        final isOwn = book.userId == currentUserId;
         return Container(
           decoration: BoxDecoration(
             border: index > 0
@@ -385,23 +444,39 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
           child: BookCard(
             book: book,
             onTap: () => context.push('/book/${book.id}'),
-            trailing: GestureDetector(
-              onTap: () => context.push('/book/${book.id}'),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-                decoration: BoxDecoration(
-                  color: AppColors.rust.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  'Request',
-                  style: AppTypography.sansBold.copyWith(
-                    fontSize: 12.5,
-                    color: AppColors.rust,
+            // Don't offer to request your own books.
+            trailing: isOwn
+                ? Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: AppColors.ink.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      'Yours',
+                      style: AppTypography.sansBold.copyWith(
+                        fontSize: 12.5,
+                        color: AppColors.ink3,
+                      ),
+                    ),
+                  )
+                : GestureDetector(
+                    onTap: () => _requestBook(book),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: AppColors.rust.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        'Request',
+                        style: AppTypography.sansBold.copyWith(
+                          fontSize: 12.5,
+                          color: AppColors.rust,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-            ),
           ),
         );
       },

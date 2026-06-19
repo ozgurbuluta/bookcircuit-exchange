@@ -176,6 +176,9 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
     );
 
     if (confirmed == true && mounted) {
+      final messenger = ScaffoldMessenger.of(context);
+      final router = GoRouter.of(context);
+
       // Create trade request
       final trade = await ref.read(tradeActionsProvider.notifier).createTrade(
         partnerId: book.userId,
@@ -183,8 +186,8 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
         theirBookIds: [book.id],
       );
 
-      if (trade != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+      if (trade != null) {
+        messenger.showSnackBar(
           SnackBar(
             content: Text(
               'Request sent to ${book.owner?.displayName ?? 'owner'}',
@@ -193,7 +196,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
             backgroundColor: AppColors.sage,
           ),
         );
-        context.go(AppRoutes.trades);
+        router.go(AppRoutes.trades);
       }
     }
   }
