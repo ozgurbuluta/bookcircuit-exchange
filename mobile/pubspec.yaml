@@ -56,6 +56,7 @@ dependencies:
   timeago: ^3.7.0
   share_plus: ^10.1.4
   firebase_ai: ^2.3.0
+  geocoding: ^4.0.0
 
 dev_dependencies:
   flutter_test:

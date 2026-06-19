@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 import '../../config/theme.dart';
 import '../../models/book.dart';
 import '../../providers/providers.dart';
@@ -27,15 +29,35 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
   final _authorController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _isbnController = TextEditingController();
+  final _languageController = TextEditingController();
+  final _locationController = TextEditingController();
 
   BookCondition _condition = BookCondition.good;
   File? _coverImage;
   String? _coverUrl;
 
+  // Per-book location. Coordinates power the distance/radius search; the text is
+  // shown to other users. Defaults to the owner's profile location.
+  double? _locationLat;
+  double? _locationLng;
+  bool _isLocating = false;
+
   List<GoogleBook> _searchResults = [];
   bool _isSearching = false;
   Timer? _debounce;
   GoogleBook? _selectedBook;
+
+  @override
+  void initState() {
+    super.initState();
+    // Prefill the location from the user's saved profile location.
+    final profile = ref.read(currentProfileProvider);
+    if (profile != null) {
+      _locationController.text = profile.formattedLocation ?? '';
+      _locationLat = profile.locationLat;
+      _locationLng = profile.locationLng;
+    }
+  }
 
   @override
   void dispose() {
@@ -44,8 +66,58 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
     _authorController.dispose();
     _descriptionController.dispose();
     _isbnController.dispose();
+    _languageController.dispose();
+    _locationController.dispose();
     _debounce?.cancel();
     super.dispose();
+  }
+
+  /// Capture the device's current GPS position and reverse-geocode it into a
+  /// readable place name.
+  Future<void> _useCurrentLocation() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _isLocating = true);
+    try {
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Location permission denied')),
+        );
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
+      );
+      _locationLat = position.latitude;
+      _locationLng = position.longitude;
+
+      // Best-effort reverse geocoding for a friendly label.
+      String label = 'Current location';
+      try {
+        final placemarks =
+            await placemarkFromCoordinates(position.latitude, position.longitude);
+        if (placemarks.isNotEmpty) {
+          final p = placemarks.first;
+          final parts = [p.locality, p.administrativeArea]
+              .where((s) => s != null && s.isNotEmpty)
+              .toList();
+          if (parts.isNotEmpty) label = parts.join(', ');
+        }
+      } catch (_) {/* keep generic label */}
+
+      _locationController.text = label;
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Could not get location: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isLocating = false);
+    }
   }
 
   void _onSearchChanged(String query) {
@@ -93,6 +165,7 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
       _authorController.clear();
       _descriptionController.clear();
       _isbnController.clear();
+      _languageController.clear();
       _coverUrl = null;
       _coverImage = null;
     });
@@ -204,9 +277,30 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
       }
     }
 
-    // Copy the owner's location onto the listing so it can appear in radius
-    // searches and on the map.
+    // Resolve the listing location. Prefer the per-book location captured in the
+    // form; geocode manually-typed text into coordinates so distance search
+    // still works; fall back to the owner's profile location.
     final profile = ref.read(currentProfileProvider);
+    String? locationText =
+        _locationController.text.trim().isEmpty ? null : _locationController.text.trim();
+    double? locationLat = _locationLat;
+    double? locationLng = _locationLng;
+
+    if (locationText != null && locationLat == null) {
+      try {
+        final locations = await locationFromAddress(locationText);
+        if (locations.isNotEmpty) {
+          locationLat = locations.first.latitude;
+          locationLng = locations.first.longitude;
+        }
+      } catch (_) {/* keep text without coordinates */}
+    }
+
+    if (locationText == null && locationLat == null) {
+      locationText = profile?.formattedLocation;
+      locationLat = profile?.locationLat;
+      locationLng = profile?.locationLng;
+    }
 
     final book = Book(
       id: '',
@@ -220,10 +314,13 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
       isbn: _isbnController.text.trim().isEmpty
           ? null
           : _isbnController.text.trim(),
+      language: _languageController.text.trim().isEmpty
+          ? null
+          : _languageController.text.trim(),
       coverImgUrl: coverUrl,
-      locationText: profile?.formattedLocation,
-      locationLat: profile?.locationLat,
-      locationLng: profile?.locationLng,
+      locationText: locationText,
+      locationLat: locationLat,
+      locationLng: locationLng,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
@@ -591,12 +688,61 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
 
               const SizedBox(height: 20),
 
-              // Description
+              // Language
               _buildField(
-                'Description (optional)',
-                _descriptionController,
-                hint: 'Book summary or notes about your copy...',
-                isMultiline: true,
+                'Language',
+                _languageController,
+                hint: 'e.g. English, Türkçe',
+              ),
+
+              // Location
+              _buildLabel('Location'),
+              const SizedBox(height: 7),
+              TextFormField(
+                controller: _locationController,
+                onChanged: (_) {
+                  // Manual edit invalidates any GPS coordinates; they'll be
+                  // re-geocoded from the typed text on save.
+                  _locationLat = null;
+                  _locationLng = null;
+                },
+                decoration: const InputDecoration(
+                  hintText: 'City or neighborhood',
+                ),
+                style: AppTypography.sansRegular.copyWith(fontSize: 15.5, color: AppColors.ink),
+              ),
+              const SizedBox(height: 10),
+              GestureDetector(
+                onTap: _isLocating ? null : _useCurrentLocation,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: AppColors.paper2,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.line, width: 0.5),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (_isLocating)
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(AppColors.rust),
+                          ),
+                        )
+                      else
+                        const Icon(Icons.my_location, size: 18, color: AppColors.rust),
+                      const SizedBox(width: 8),
+                      Text(
+                        _isLocating ? 'Getting location…' : 'Use my current location',
+                        style: AppTypography.sansBold.copyWith(fontSize: 14, color: AppColors.rust),
+                      ),
+                    ],
+                  ),
+                ),
               ),
 
               const SizedBox(height: 40),
