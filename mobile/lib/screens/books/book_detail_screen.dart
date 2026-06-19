@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../config/theme.dart';
 import '../../config/router.dart';
+import '../../config/env.dart';
 import '../../models/book.dart';
 import '../../providers/providers.dart';
 import '../../widgets/widgets.dart';
@@ -99,9 +100,13 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
   }
 
   Future<void> _shareBook(Book book) async {
+    final link = '${Env.webUrl}/book/${book.id}';
+    final message =
+        'I have "${book.title}" by ${book.author} in my library. '
+        'Are you interested? Check it on Turtle Turning Pages: $link';
     await Share.share(
-      '${book.title} by ${book.author} - Available for swap on Turtle Turning Pages!',
-      subject: 'Check out this book',
+      message,
+      subject: 'A book from my library on Turtle Turning Pages',
     );
   }
 

@@ -4,6 +4,9 @@ class Env {
   static const String appName = 'Turtle Turning Pages';
   static const String appVersion = '1.0.0';
 
+  // Public web app URL (Firebase Hosting default). Used for shareable links.
+  static const String webUrl = 'https://turtle-turning-pages.web.app';
+
   // Default search radius in kilometers
   static const double defaultSearchRadius = 5.0;
   static const double minSearchRadius = 1.0;
