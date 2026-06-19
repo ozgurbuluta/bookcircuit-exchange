@@ -1,8 +1,10 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../config/theme.dart';
 import '../../config/router.dart';
 import '../../models/book.dart';
@@ -34,6 +36,66 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
         duration: const Duration(seconds: 2),
       ),
     );
+  }
+
+  /// Hero cover that shows the full book image (no cropping). Falls back to the
+  /// generated cover when there's no image URL.
+  Widget _buildHeroCover(Book book) {
+    if (book.coverImgUrl != null && book.coverImgUrl!.isNotEmpty) {
+      return Container(
+        constraints: const BoxConstraints(maxHeight: 280, maxWidth: 200),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.18),
+              blurRadius: 24,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: CachedNetworkImage(
+            imageUrl: book.coverImgUrl!,
+            fit: BoxFit.contain,
+            placeholder: (_, __) => BookCover(
+              title: book.title,
+              author: book.author,
+              coverColorKey: book.coverColorKey,
+              width: 172,
+              showShadow: false,
+            ),
+            errorWidget: (_, __, ___) => BookCover(
+              title: book.title,
+              author: book.author,
+              coverColorKey: book.coverColorKey,
+              width: 172,
+              showShadow: false,
+            ),
+          ),
+        ),
+      );
+    }
+    return BookCover(
+      title: book.title,
+      author: book.author,
+      coverColorKey: book.coverColorKey,
+      width: 172,
+    );
+  }
+
+  /// Haversine distance in kilometers.
+  double _distanceKm(double lat1, double lng1, double lat2, double lng2) {
+    const earthRadiusKm = 6371.0;
+    final dLat = (lat2 - lat1) * math.pi / 180;
+    final dLng = (lng2 - lng1) * math.pi / 180;
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1 * math.pi / 180) *
+            math.cos(lat2 * math.pi / 180) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
+    return earthRadiusKm * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
   }
 
   Future<void> _shareBook(Book book) async {
@@ -215,6 +277,23 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
           final isOwner = book.userId == currentUserId;
           final colors = AppColors.covers[book.coverColorKey] ?? AppColors.covers['slate']!;
 
+          // Distance from the viewer to the book (single-book fetches don't
+          // carry a precomputed distance, so derive it here).
+          final myLocation = ref.watch(currentLocationProvider).valueOrNull;
+          String? distanceLabel = book.distanceDisplay;
+          if (distanceLabel == null &&
+              myLocation != null &&
+              book.locationLat != null &&
+              book.locationLng != null) {
+            final km = _distanceKm(
+              myLocation.lat,
+              myLocation.lng,
+              book.locationLat!,
+              book.locationLng!,
+            );
+            distanceLabel = '${km.toStringAsFixed(1)} km';
+          }
+
           return Column(
             children: [
               Expanded(
@@ -269,13 +348,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                         child: Column(
                           children: [
                             Center(
-                              child: BookCover(
-                                imageUrl: book.coverImgUrl,
-                                title: book.title,
-                                author: book.author,
-                                coverColorKey: book.coverColorKey,
-                                width: 172,
-                              ),
+                              child: _buildHeroCover(book),
                             ),
                             const SizedBox(height: 22),
                             Padding(
@@ -306,7 +379,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       ConditionBadge(condition: book.condition),
-                                      if (book.distanceDisplay != null) ...[
+                                      if (distanceLabel != null) ...[
                                         const SizedBox(width: 10),
                                         Row(
                                           mainAxisSize: MainAxisSize.min,
@@ -314,7 +387,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                                             const Icon(Icons.location_on, size: 15, color: AppColors.rust),
                                             const SizedBox(width: 4),
                                             Text(
-                                              '${book.distanceDisplay} away',
+                                              '$distanceLabel away',
                                               style: AppTypography.sansSemiBold.copyWith(
                                                 fontSize: 13,
                                                 color: AppColors.ink3,
@@ -428,10 +501,8 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                           physics: const NeverScrollableScrollPhysics(),
                           childAspectRatio: 2.5,
                           children: [
-                            _DetailItem(label: 'Published', value: book.publicationYear?.toString() ?? '-'),
-                            _DetailItem(label: 'Pages', value: book.pages?.toString() ?? '-'),
                             _DetailItem(label: 'Language', value: book.language ?? '-'),
-                            _DetailItem(label: 'Publisher', value: book.publisher ?? '-'),
+                            _DetailItem(label: 'Location', value: book.locationText ?? '-'),
                           ],
                         ),
                       ),
