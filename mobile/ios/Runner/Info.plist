@@ -49,9 +49,11 @@
 	<string>AIzaSyBvJI4of14qmp5fDZGRYHHMnS_KmAlH4x4</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Turtle Turning Pages needs your location to show books available near you and help you connect with nearby book lovers.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Turtle Turning Pages uses your location to show books available near you and help you connect with nearby book lovers.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Turtle Turning Pages needs camera access so you can take a photo of your book's cover or your profile picture.</string>
+	<string>Turtle Turning Pages needs camera access so you can photograph a book cover, scan a shelf to add books, or take a profile picture.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Turtle Turning Pages needs photo library access so you can choose a book cover or profile picture from your photos.</string>
+	<string>Turtle Turning Pages needs photo library access so you can choose a book cover, a shelf photo to scan, or a profile picture from your photos.</string>
 </dict>
 </plist>
