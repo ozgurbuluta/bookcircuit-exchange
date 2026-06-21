@@ -9,7 +9,18 @@
 
 BookCircuit (codebase name "Turtle Turning Pages") is a community book-exchange product with a React web app and a Flutter mobile app. The core flows — auth, book listing, discovery, trade requests, and real-time chat — all exist, and the codebase has a sensible service-layer shape with clear feature boundaries.
 
-**The single biggest root cause of problems is an incomplete Supabase → Firebase migration.** The live backend is Firebase (Auth, Firestore, Storage), but the repo still carries ~40 Supabase SQL files, two unused Supabase clients, snake_case data models in the mobile app, and — most damagingly — a `user.id` vs `user.uid` mismatch that silently breaks chat, profile, requests, and ownership checks across roughly 10 web components.
+**The single biggest root cause of problems is an incomplete Supabase → Firebase migration.** The live backend is Firebase (Auth, Firestore, Storage), but the repo still carries ~40 Supabase SQL files, ~~two unused Supabase clients,~~ snake_case data models in the mobile app, and ~~most damagingly — a `user.id` vs `user.uid` mismatch that silently breaks chat, profile, requests, and ownership checks across roughly 10 web components.~~
+
+**🎉 June 2026 Progress Update:**
+- ✅ `user.id` → `user.uid` bug fixed across all web components
+- ✅ Firestore rules hardened (messages, trades, participants, blog admin-only)
+- ✅ Supabase client files removed from src/lib
+- ✅ Dead routes removed (SimpleTest, testGeographyColumn)
+- ✅ Third-party gptengineer script removed
+- ✅ Build 5 shipped: language field, per-book location, share button, real requests
+- ✅ Blog XSS fixed with DOMPurify sanitization
+- ✅ All Supabase SQL files archived to `archive/` folder
+- ✅ Supabase dependencies removed from package.json
 
 **Severity counts across all four review tracks:**
 
@@ -22,10 +33,10 @@ BookCircuit (codebase name "Turtle Turning Pages") is a community book-exchange 
 
 **Top 5 actions (do these first):**
 
-1. Fix `firestore.rules` — messages, trade items/history, participants, blog writes (Section 3.1)
-2. Sanitize blog HTML with DOMPurify and lock blog writes to admins (Section 3.2)
-3. Replace all `user.id` with `user.uid` via a normalized auth helper (Section 2.1)
-4. Fix broken routes on web and chat routing on mobile (Sections 2.2, 7.1)
+1. ✅ ~~Fix `firestore.rules` — messages, trade items/history, participants, blog writes (Section 3.1)~~ **DONE**
+2. ✅ ~~Sanitize blog HTML with DOMPurify and lock blog writes to admins (Section 3.2)~~ **DONE**
+3. ✅ ~~Replace all `user.id` with `user.uid` via a normalized auth helper (Section 2.1)~~ **DONE**
+4. ✅ ~~Fix broken routes on web and chat routing on mobile (Sections 2.2, 7.1)~~ **DONE**
 5. Rotate/restrict the committed Google Maps API key and enable Firebase App Check (Section 3.3)
 
 ---
