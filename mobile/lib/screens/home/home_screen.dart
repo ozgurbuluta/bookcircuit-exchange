@@ -25,60 +25,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.dispose();
   }
 
-  void _showAddOptions() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: const BoxDecoration(
-          color: AppColors.paper,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                margin: const EdgeInsets.only(top: 12),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.ink.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 8),
-              ListTile(
-                leading: const Icon(Icons.edit_outlined, color: AppColors.ink2),
-                title: Text('Add a book',
-                    style: AppTypography.sansSemiBold.copyWith(color: AppColors.ink)),
-                subtitle: Text('Search and add one book',
-                    style: AppTypography.sansRegular.copyWith(fontSize: 12.5, color: AppColors.ink3)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  context.push(AppRoutes.addBook);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.document_scanner_outlined, color: AppColors.rust),
-                title: Text('Scan a shelf',
-                    style: AppTypography.sansSemiBold.copyWith(color: AppColors.ink)),
-                subtitle: Text('Photograph a shelf to add many at once',
-                    style: AppTypography.sansRegular.copyWith(fontSize: 12.5, color: AppColors.ink3)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  context.push(AppRoutes.scanShelf);
-                },
-              ),
-              const SizedBox(height: 12),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Future<void> _onRefresh() async {
     ref.invalidate(booksProvider);
     ref.invalidate(pendingTradesCountProvider);
@@ -91,15 +37,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final booksAsync = ref.watch(booksProvider);
     final pendingTrades = ref.watch(pendingTradesCountProvider);
 
-    return Scaffold(
-      backgroundColor: AppColors.paper,
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAddOptions,
-        backgroundColor: AppColors.rust,
-        elevation: 4,
-        child: const Icon(Icons.add, color: Colors.white, size: 28),
-      ),
-      body: SafeArea(
+    return Container(
+      color: AppColors.paper,
+      child: SafeArea(
         bottom: false,
         child: RefreshIndicator(
           onRefresh: _onRefresh,

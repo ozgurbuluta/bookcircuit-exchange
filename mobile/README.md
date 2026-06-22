@@ -2,7 +2,7 @@
 
 A community-driven book exchange iOS app connecting local book lovers to share, trade, and discover books.
 
-## Current Status (v1.0.0 Build 5)
+## Current Status (v1.0.0 Build 7)
 
 **Stage**: TestFlight Ready  
 **Last Updated**: June 2026

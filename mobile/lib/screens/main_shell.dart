@@ -48,15 +48,80 @@ class _MainShellState extends ConsumerState<MainShell> {
     context.go(_tabs[index].route);
   }
 
+  void _showAddOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: AppColors.paper,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.ink.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 8),
+              ListTile(
+                leading: const Icon(Icons.edit_outlined, color: AppColors.ink2),
+                title: Text('Add a book',
+                    style: AppTypography.sansSemiBold.copyWith(color: AppColors.ink)),
+                subtitle: Text('Search and add one book',
+                    style: AppTypography.sansRegular.copyWith(fontSize: 12.5, color: AppColors.ink3)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.push(AppRoutes.addBook);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.document_scanner_outlined, color: AppColors.rust),
+                title: Text('Scan a shelf',
+                    style: AppTypography.sansSemiBold.copyWith(color: AppColors.ink)),
+                subtitle: Text('Photograph a shelf to add many at once',
+                    style: AppTypography.sansRegular.copyWith(fontSize: 12.5, color: AppColors.ink3)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.push(AppRoutes.scanShelf);
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Watch for badge counts
     final pendingTrades = ref.watch(pendingTradesCountProvider);
     final unreadMessages = ref.watch(unreadMessagesCountProvider);
 
+    // Show FAB only on Home tab
+    final showFab = _currentIndex == 0;
+
     return Scaffold(
       body: widget.child,
       extendBody: true,
+      floatingActionButton: showFab
+          ? FloatingActionButton(
+              onPressed: _showAddOptions,
+              backgroundColor: AppColors.rust,
+              elevation: 4,
+              child: const Icon(Icons.add, color: Colors.white, size: 28),
+            )
+          : null,
       bottomNavigationBar: ClipRRect(
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
