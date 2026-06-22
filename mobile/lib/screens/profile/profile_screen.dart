@@ -24,6 +24,60 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
+  void _showAddOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: AppColors.paper,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.ink.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 8),
+              ListTile(
+                leading: const Icon(Icons.edit_outlined, color: AppColors.ink2),
+                title: Text('Add a book',
+                    style: AppTypography.sansSemiBold.copyWith(color: AppColors.ink)),
+                subtitle: Text('Search and add one book',
+                    style: AppTypography.sansRegular.copyWith(fontSize: 12.5, color: AppColors.ink3)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.push(AppRoutes.addBook);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.document_scanner_outlined, color: AppColors.rust),
+                title: Text('Scan a shelf',
+                    style: AppTypography.sansSemiBold.copyWith(color: AppColors.ink)),
+                subtitle: Text('Photograph a shelf to add many at once',
+                    style: AppTypography.sansRegular.copyWith(fontSize: 12.5, color: AppColors.ink3)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.push(AppRoutes.scanShelf);
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(currentProfileProvider);
@@ -136,7 +190,7 @@ class ProfileScreen extends ConsumerWidget {
                 child: SectionHeader(
                   title: 'My shelf',
                   action: 'Add book',
-                  onAction: () => context.push(AppRoutes.addBook),
+                  onAction: () => _showAddOptions(context),
                 ),
               ),
             ),
@@ -152,7 +206,7 @@ class ProfileScreen extends ConsumerWidget {
                     itemCount: books.length + 1,
                     itemBuilder: (context, index) {
                       if (index == books.length) {
-                        return _AddBookTile(onTap: () => context.push(AppRoutes.addBook));
+                        return _AddBookTile(onTap: () => _showAddOptions(context));
                       }
                       final book = books[index];
                       return Padding(

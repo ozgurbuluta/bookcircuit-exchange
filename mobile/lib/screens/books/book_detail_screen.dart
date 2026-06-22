@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -5,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import '../../config/theme.dart';
 import '../../config/router.dart';
 import '../../config/env.dart';
@@ -100,13 +103,36 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
   }
 
   Future<void> _shareBook(Book book) async {
-    final link = '${Env.webUrl}/book/${book.id}';
     final message =
-        'I have "${book.title}" by ${book.author} in my library. '
-        'Are you interested? Check it on Turtle Turning Pages: $link';
+        'Check what I currently have in my library!\n\n'
+        '"${book.title}" by ${book.author}\n\n'
+        'Are you interested in a trade?\n\n'
+        'Check Turtle Turning Pages for more information: ${Env.webUrl}';
+
+    try {
+      if (book.coverImgUrl != null && book.coverImgUrl!.isNotEmpty) {
+        final response = await http.get(Uri.parse(book.coverImgUrl!));
+        if (response.statusCode == 200) {
+          final tempDir = await getTemporaryDirectory();
+          final file = File('${tempDir.path}/book_cover.jpg');
+          await file.writeAsBytes(response.bodyBytes);
+
+          await Share.shareXFiles(
+            [XFile(file.path)],
+            text: message,
+            subject: '${book.title} - Turtle Turning Pages',
+          );
+          return;
+        }
+      }
+    } catch (e) {
+      // Fall back to text-only share
+    }
+
+    // Text-only share if image unavailable
     await Share.share(
       message,
-      subject: 'A book from my library on Turtle Turning Pages',
+      subject: '${book.title} - Turtle Turning Pages',
     );
   }
 
@@ -470,52 +496,6 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                         ),
                       ),
 
-                    // Description
-                    if (book.description != null) ...[
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(0, 24, 0, 12),
-                          child: SectionHeader(title: 'About this copy'),
-                        ),
-                      ),
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 40),
-                          child: Text(
-                            book.description!,
-                            style: AppTypography.serifRegular.copyWith(
-                              fontSize: 16,
-                              height: 1.55,
-                              color: AppColors.ink2,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-
-                    // Details
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(0, 24, 0, 12),
-                        child: SectionHeader(title: 'Details'),
-                      ),
-                    ),
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 40),
-                        child: GridView.count(
-                          crossAxisCount: 2,
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          childAspectRatio: 2.5,
-                          children: [
-                            _DetailItem(label: 'Language', value: book.language ?? '-'),
-                            _DetailItem(label: 'Location', value: book.locationText ?? '-'),
-                          ],
-                        ),
-                      ),
-                    ),
-
                     // Genres
                     if (book.genres != null && book.genres!.isNotEmpty)
                       SliverToBoxAdapter(
@@ -617,35 +597,3 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
   }
 }
 
-class _DetailItem extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _DetailItem({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label.toUpperCase(),
-          style: AppTypography.sansSemiBold.copyWith(
-            fontSize: 11.5,
-            letterSpacing: 0.6,
-            color: AppColors.ink3,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: AppTypography.serifRegular.copyWith(
-            fontSize: 16,
-            color: AppColors.ink,
-          ),
-        ),
-      ],
-    );
-  }
-}

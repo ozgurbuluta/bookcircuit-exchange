@@ -2,7 +2,7 @@ name: turtle_turning_pages
 description: "Turtle Turning Pages - A community-driven book trading platform"
 publish_to: 'none'
 
-version: 1.0.0+8
+version: 1.0.0+9
 
 environment:
   sdk: ^3.9.2
@@ -57,6 +57,7 @@ dependencies:
   share_plus: ^10.1.4
   firebase_ai: ^2.3.0
   geocoding: ^4.0.0
+  path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:

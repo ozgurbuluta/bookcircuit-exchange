@@ -21,21 +21,20 @@ class _EditBookScreenState extends ConsumerState<EditBookScreen> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _titleController;
   late TextEditingController _authorController;
-  late TextEditingController _isbnController;
-  late TextEditingController _languageController;
   late TextEditingController _locationController;
   BookCondition? _condition;
+  String? _selectedLanguage;
   double? _locationLat;
   double? _locationLng;
   bool _isLocating = false;
   bool _initialized = false;
 
+  static const _languageOptions = ['English', 'Türkçe', 'Deutsch', 'Other'];
+
   @override
   void dispose() {
     _titleController.dispose();
     _authorController.dispose();
-    _isbnController.dispose();
-    _languageController.dispose();
     _locationController.dispose();
     super.dispose();
   }
@@ -44,10 +43,11 @@ class _EditBookScreenState extends ConsumerState<EditBookScreen> {
     if (_initialized) return;
     _titleController = TextEditingController(text: book.title);
     _authorController = TextEditingController(text: book.author);
-    _isbnController = TextEditingController(text: book.isbn ?? '');
-    _languageController = TextEditingController(text: book.language ?? '');
     _locationController = TextEditingController(text: book.locationText ?? '');
     _condition = book.condition;
+    _selectedLanguage = _languageOptions.contains(book.language)
+        ? book.language
+        : (book.language != null && book.language!.isNotEmpty ? 'Other' : null);
     _locationLat = book.locationLat;
     _locationLng = book.locationLng;
     _initialized = true;
@@ -81,9 +81,16 @@ class _EditBookScreenState extends ConsumerState<EditBookScreen> {
             await placemarkFromCoordinates(position.latitude, position.longitude);
         if (placemarks.isNotEmpty) {
           final p = placemarks.first;
-          final parts = [p.locality, p.administrativeArea]
-              .where((s) => s != null && s.isNotEmpty)
-              .toList();
+          final parts = <String>[];
+          if (p.postalCode != null && p.postalCode!.isNotEmpty) {
+            parts.add(p.postalCode!);
+          }
+          if (p.locality != null && p.locality!.isNotEmpty) {
+            parts.add(p.locality!);
+          }
+          if (parts.isEmpty && p.administrativeArea != null && p.administrativeArea!.isNotEmpty) {
+            parts.add(p.administrativeArea!);
+          }
           if (parts.isNotEmpty) label = parts.join(', ');
         }
       } catch (_) {}
@@ -132,13 +139,19 @@ class _EditBookScreenState extends ConsumerState<EditBookScreen> {
       return;
     }
 
+    if (_selectedLanguage == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select a language for this book.')),
+        );
+      }
+      return;
+    }
+
     final updated = book.copyWith(
       title: _titleController.text.trim(),
       author: _authorController.text.trim(),
-      isbn: _isbnController.text.trim().isEmpty
-          ? null
-          : _isbnController.text.trim(),
-      language: _languageController.text.trim(),
+      language: _selectedLanguage,
       locationText: locationText,
       locationLat: locationLat,
       locationLng: locationLng,
@@ -231,11 +244,38 @@ class _EditBookScreenState extends ConsumerState<EditBookScreen> {
                   // Author
                   _buildField('Author', _authorController, required: true),
 
-                  // ISBN
-                  _buildField('ISBN (optional)', _isbnController),
-
-                  // Language (required)
-                  _buildField('Language', _languageController, required: true, hint: 'e.g. English, Türkçe'),
+                  // Language (required - dropdown)
+                  _buildLabel('Language'),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _languageOptions.map((lang) {
+                      final isSelected = lang == _selectedLanguage;
+                      return GestureDetector(
+                        onTap: () => setState(() => _selectedLanguage = lang),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: isSelected ? AppColors.ink : AppColors.paper2,
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: isSelected ? AppColors.ink : AppColors.line,
+                              width: 0.5,
+                            ),
+                          ),
+                          child: Text(
+                            lang,
+                            style: AppTypography.sansSemiBold.copyWith(
+                              fontSize: 13,
+                              color: isSelected ? AppColors.paper : AppColors.ink2,
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 20),
 
                   // Condition
                   _buildLabel('Condition'),
@@ -280,7 +320,7 @@ class _EditBookScreenState extends ConsumerState<EditBookScreen> {
                       _locationLng = null;
                     },
                     decoration: const InputDecoration(
-                      hintText: 'City or neighborhood',
+                      hintText: 'Postal code, address, or city',
                     ),
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {

@@ -35,7 +35,8 @@ class _ScanReviewScreenState extends ConsumerState<ScanReviewScreen> {
   double? _locationLng;
 
   // Language for all books (required)
-  final _languageController = TextEditingController();
+  String? _selectedLanguage;
+  static const _languageOptions = ['English', 'Türkçe', 'Deutsch', 'Other'];
 
   @override
   void initState() {
@@ -53,7 +54,6 @@ class _ScanReviewScreenState extends ConsumerState<ScanReviewScreen> {
   @override
   void dispose() {
     _locationController.dispose();
-    _languageController.dispose();
     super.dispose();
   }
 
@@ -85,9 +85,16 @@ class _ScanReviewScreenState extends ConsumerState<ScanReviewScreen> {
             await placemarkFromCoordinates(position.latitude, position.longitude);
         if (placemarks.isNotEmpty) {
           final p = placemarks.first;
-          final parts = [p.locality, p.administrativeArea]
-              .where((s) => s != null && s.isNotEmpty)
-              .toList();
+          final parts = <String>[];
+          if (p.postalCode != null && p.postalCode!.isNotEmpty) {
+            parts.add(p.postalCode!);
+          }
+          if (p.locality != null && p.locality!.isNotEmpty) {
+            parts.add(p.locality!);
+          }
+          if (parts.isEmpty && p.administrativeArea != null && p.administrativeArea!.isNotEmpty) {
+            parts.add(p.administrativeArea!);
+          }
           if (parts.isNotEmpty) label = parts.join(', ');
         }
       } catch (_) {}
@@ -243,10 +250,9 @@ class _ScanReviewScreenState extends ConsumerState<ScanReviewScreen> {
     if (selected.isEmpty) return;
 
     // Validate language
-    final language = _languageController.text.trim();
-    if (language.isEmpty) {
+    if (_selectedLanguage == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please set a language for the books.')),
+        const SnackBar(content: Text('Please select a language for the books.')),
       );
       return;
     }
@@ -295,7 +301,7 @@ class _ScanReviewScreenState extends ConsumerState<ScanReviewScreen> {
               locationText: locationText,
               locationLat: locationLat!,
               locationLng: locationLng!,
-              language: language,
+              language: _selectedLanguage!,
             ))
         .toList();
 
@@ -596,25 +602,44 @@ class _ScanReviewScreenState extends ConsumerState<ScanReviewScreen> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Language field
+          // Language selection
           Row(
             children: [
+              const Icon(Icons.language, size: 18, color: AppColors.ink3),
+              const SizedBox(width: 8),
               Expanded(
-                child: TextField(
-                  controller: _languageController,
-                  style: AppTypography.sansRegular.copyWith(fontSize: 14, color: AppColors.ink),
-                  decoration: InputDecoration(
-                    hintText: 'Language (e.g. English)',
-                    hintStyle: AppTypography.sansRegular.copyWith(fontSize: 14, color: AppColors.ink3),
-                    prefixIcon: const Icon(Icons.language, size: 18, color: AppColors.ink3),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    isDense: true,
-                  ),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: _languageOptions.map((lang) {
+                    final isSelected = lang == _selectedLanguage;
+                    return GestureDetector(
+                      onTap: () => setState(() => _selectedLanguage = lang),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: isSelected ? AppColors.ink : AppColors.paper2,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: isSelected ? AppColors.ink : AppColors.line,
+                            width: 0.5,
+                          ),
+                        ),
+                        child: Text(
+                          lang,
+                          style: AppTypography.sansSemiBold.copyWith(
+                            fontSize: 12,
+                            color: isSelected ? AppColors.paper : AppColors.ink2,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           // Location field with GPS button
           Row(
             children: [
@@ -627,7 +652,7 @@ class _ScanReviewScreenState extends ConsumerState<ScanReviewScreen> {
                   },
                   style: AppTypography.sansRegular.copyWith(fontSize: 14, color: AppColors.ink),
                   decoration: InputDecoration(
-                    hintText: 'Location (city or area)',
+                    hintText: 'Postal code, address, or city',
                     hintStyle: AppTypography.sansRegular.copyWith(fontSize: 14, color: AppColors.ink3),
                     prefixIcon: const Icon(Icons.location_on_outlined, size: 18, color: AppColors.ink3),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),

@@ -2,11 +2,16 @@
 
 A community-driven book exchange iOS app connecting local book lovers to share, trade, and discover books.
 
-## Current Status (v1.0.0 Build 8)
+## Current Status (v1.0.0 Build 9)
 
 **Stage**: TestFlight Ready  
 **Last Updated**: June 2026
 
+> **Build 9 improvements:** Language is now a dropdown (English, Türkçe, Deutsch, Other).
+> Location shows postal code + city for more precise results. Removed ISBN from Edit.
+> Removed "About this copy" and "Details" sections from Book Detail. Share button now
+> shares cover image with trade message. Profile "Add book" shows scan option.
+>
 > **Build 8 improvements:** Location and language are now required for all books.
 > Home screen "Near You" only shows books from other users. Edit Book now includes
 > language and location fields. Scan a Shelf flow requires language and location

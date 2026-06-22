@@ -29,12 +29,14 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
   final _authorController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _isbnController = TextEditingController();
-  final _languageController = TextEditingController();
   final _locationController = TextEditingController();
 
   BookCondition _condition = BookCondition.good;
+  String? _selectedLanguage;
   File? _coverImage;
   String? _coverUrl;
+
+  static const _languageOptions = ['English', 'Türkçe', 'Deutsch', 'Other'];
 
   // Per-book location. Coordinates power the distance/radius search; the text is
   // shown to other users. Defaults to the owner's profile location.
@@ -66,7 +68,6 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
     _authorController.dispose();
     _descriptionController.dispose();
     _isbnController.dispose();
-    _languageController.dispose();
     _locationController.dispose();
     _debounce?.cancel();
     super.dispose();
@@ -96,16 +97,23 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
       _locationLat = position.latitude;
       _locationLng = position.longitude;
 
-      // Best-effort reverse geocoding for a friendly label.
+      // Best-effort reverse geocoding for a friendly label with postal code.
       String label = 'Current location';
       try {
         final placemarks =
             await placemarkFromCoordinates(position.latitude, position.longitude);
         if (placemarks.isNotEmpty) {
           final p = placemarks.first;
-          final parts = [p.locality, p.administrativeArea]
-              .where((s) => s != null && s.isNotEmpty)
-              .toList();
+          final parts = <String>[];
+          if (p.postalCode != null && p.postalCode!.isNotEmpty) {
+            parts.add(p.postalCode!);
+          }
+          if (p.locality != null && p.locality!.isNotEmpty) {
+            parts.add(p.locality!);
+          }
+          if (parts.isEmpty && p.administrativeArea != null && p.administrativeArea!.isNotEmpty) {
+            parts.add(p.administrativeArea!);
+          }
           if (parts.isNotEmpty) label = parts.join(', ');
         }
       } catch (_) {/* keep generic label */}
@@ -165,7 +173,7 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
       _authorController.clear();
       _descriptionController.clear();
       _isbnController.clear();
-      _languageController.clear();
+      _selectedLanguage = null;
       _coverUrl = null;
       _coverImage = null;
     });
@@ -312,6 +320,16 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
       return;
     }
 
+    // Ensure language is selected
+    if (_selectedLanguage == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select a language for this book.')),
+        );
+      }
+      return;
+    }
+
     final book = Book(
       id: '',
       userId: currentUser.uid,
@@ -324,11 +342,11 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
       isbn: _isbnController.text.trim().isEmpty
           ? null
           : _isbnController.text.trim(),
-      language: _languageController.text.trim(), // Required field
+      language: _selectedLanguage,
       coverImgUrl: coverUrl,
-      locationText: locationText, // Required field
-      locationLat: locationLat, // Required - validated above
-      locationLng: locationLng, // Required - validated above
+      locationText: locationText,
+      locationLat: locationLat,
+      locationLng: locationLng,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
@@ -696,13 +714,39 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
 
               const SizedBox(height: 20),
 
-              // Language (required)
-              _buildField(
-                'Language',
-                _languageController,
-                required: true,
-                hint: 'e.g. English, Türkçe',
+              // Language (required - dropdown)
+              _buildLabel('Language'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _languageOptions.map((lang) {
+                  final isSelected = lang == _selectedLanguage;
+                  return GestureDetector(
+                    onTap: () => setState(() => _selectedLanguage = lang),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isSelected ? AppColors.ink : AppColors.paper2,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: isSelected ? AppColors.ink : AppColors.line,
+                          width: 0.5,
+                        ),
+                      ),
+                      child: Text(
+                        lang,
+                        style: AppTypography.sansSemiBold.copyWith(
+                          fontSize: 13,
+                          color: isSelected ? AppColors.paper : AppColors.ink2,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
               ),
+
+              const SizedBox(height: 20),
 
               // Location (required)
               _buildLabel('Location'),
@@ -716,7 +760,7 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
                   _locationLng = null;
                 },
                 decoration: const InputDecoration(
-                  hintText: 'City or neighborhood',
+                  hintText: 'Postal code, address, or city',
                 ),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
