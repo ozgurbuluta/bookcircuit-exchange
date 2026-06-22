@@ -277,29 +277,39 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
       }
     }
 
-    // Resolve the listing location. Prefer the per-book location captured in the
-    // form; geocode manually-typed text into coordinates so distance search
-    // still works; fall back to the owner's profile location.
-    final profile = ref.read(currentProfileProvider);
-    String? locationText =
-        _locationController.text.trim().isEmpty ? null : _locationController.text.trim();
+    // Resolve the listing location. Location is required - geocode manually-typed
+    // text into coordinates so distance search works.
+    String locationText = _locationController.text.trim();
     double? locationLat = _locationLat;
     double? locationLng = _locationLng;
 
-    if (locationText != null && locationLat == null) {
+    // If user typed a location but we don't have coordinates, try to geocode it
+    if (locationLat == null && locationText.isNotEmpty) {
       try {
         final locations = await locationFromAddress(locationText);
         if (locations.isNotEmpty) {
           locationLat = locations.first.latitude;
           locationLng = locations.first.longitude;
         }
-      } catch (_) {/* keep text without coordinates */}
+      } catch (_) {
+        // If geocoding fails, show error
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not find that location. Please try a different address or use current location.')),
+          );
+        }
+        return;
+      }
     }
 
-    if (locationText == null && locationLat == null) {
-      locationText = profile?.formattedLocation;
-      locationLat = profile?.locationLat;
-      locationLng = profile?.locationLng;
+    // Ensure we have coordinates
+    if (locationLat == null || locationLng == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please set a location for this book.')),
+        );
+      }
+      return;
     }
 
     final book = Book(
@@ -314,13 +324,11 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
       isbn: _isbnController.text.trim().isEmpty
           ? null
           : _isbnController.text.trim(),
-      language: _languageController.text.trim().isEmpty
-          ? null
-          : _languageController.text.trim(),
+      language: _languageController.text.trim(), // Required field
       coverImgUrl: coverUrl,
-      locationText: locationText,
-      locationLat: locationLat,
-      locationLng: locationLng,
+      locationText: locationText, // Required field
+      locationLat: locationLat, // Required - validated above
+      locationLng: locationLng, // Required - validated above
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
@@ -688,14 +696,15 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
 
               const SizedBox(height: 20),
 
-              // Language
+              // Language (required)
               _buildField(
                 'Language',
                 _languageController,
+                required: true,
                 hint: 'e.g. English, Türkçe',
               ),
 
-              // Location
+              // Location (required)
               _buildLabel('Location'),
               const SizedBox(height: 7),
               TextFormField(
@@ -709,6 +718,12 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
                 decoration: const InputDecoration(
                   hintText: 'City or neighborhood',
                 ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Location is required';
+                  }
+                  return null;
+                },
                 style: AppTypography.sansRegular.copyWith(fontSize: 15.5, color: AppColors.ink),
               ),
               const SizedBox(height: 10),

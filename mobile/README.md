@@ -2,18 +2,19 @@
 
 A community-driven book exchange iOS app connecting local book lovers to share, trade, and discover books.
 
-## Current Status (v1.0.0 Build 7)
+## Current Status (v1.0.0 Build 8)
 
 **Stage**: TestFlight Ready  
 **Last Updated**: June 2026
 
-> **Build 4 highlight:** "Scan a Shelf" — photograph a bookcase and AI bulk-adds
-> the books (see the section below). Requires Firebase AI Logic enabled.
+> **Build 8 improvements:** Location and language are now required for all books.
+> Home screen "Near You" only shows books from other users. Edit Book now includes
+> language and location fields. Scan a Shelf flow requires language and location
+> before bulk adding.
 >
-> **Build 5 improvements:** Language + per-book location (current GPS or manual)
-> on Add Book; full (uncropped) cover on book detail with distance-to-book;
-> working share button; Discover "Request" now sends a real request and is
-> hidden for your own books.
+> **Build 5 improvements:** Language + per-book location on Add Book; full cover
+> on book detail with distance; working share button; Discover "Request" sends
+> real requests and is hidden for own books.
 
 ### What's Working
 

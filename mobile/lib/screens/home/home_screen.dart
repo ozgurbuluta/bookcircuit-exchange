@@ -34,6 +34,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final profile = ref.watch(currentProfileProvider);
+    final currentUser = ref.watch(currentUserProvider);
     final booksAsync = ref.watch(booksProvider);
     final pendingTrades = ref.watch(pendingTradesCountProvider);
 
@@ -257,12 +258,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
 
-            // Books carousel
+            // Books carousel - only show books from OTHER users
             booksAsync.when(
               data: (allBooks) {
+                final otherUsersBooks = allBooks
+                    .where((b) => b.userId != currentUser?.uid)
+                    .toList();
                 final books = _searchQuery.isEmpty
-                    ? allBooks
-                    : allBooks.where((b) =>
+                    ? otherUsersBooks
+                    : otherUsersBooks.where((b) =>
                         b.title.toLowerCase().contains(_searchQuery) ||
                         b.author.toLowerCase().contains(_searchQuery)).toList();
                 return books.isEmpty
@@ -364,12 +368,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
 
-            // Books list
+            // Books list - only show books from OTHER users
             booksAsync.when(
               data: (allBooks) {
+                final otherUsersBooks = allBooks
+                    .where((b) => b.userId != currentUser?.uid)
+                    .toList();
                 final books = _searchQuery.isEmpty
-                    ? allBooks
-                    : allBooks.where((b) =>
+                    ? otherUsersBooks
+                    : otherUsersBooks.where((b) =>
                         b.title.toLowerCase().contains(_searchQuery) ||
                         b.author.toLowerCase().contains(_searchQuery)).toList();
                 final freshBooks = books.skip(5).take(4).toList();

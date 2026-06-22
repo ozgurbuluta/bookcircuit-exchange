@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 import '../../config/theme.dart';
 import '../../models/book.dart';
 import '../../providers/providers.dart';
@@ -19,17 +21,22 @@ class _EditBookScreenState extends ConsumerState<EditBookScreen> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _titleController;
   late TextEditingController _authorController;
-  late TextEditingController _descriptionController;
   late TextEditingController _isbnController;
+  late TextEditingController _languageController;
+  late TextEditingController _locationController;
   BookCondition? _condition;
+  double? _locationLat;
+  double? _locationLng;
+  bool _isLocating = false;
   bool _initialized = false;
 
   @override
   void dispose() {
     _titleController.dispose();
     _authorController.dispose();
-    _descriptionController.dispose();
     _isbnController.dispose();
+    _languageController.dispose();
+    _locationController.dispose();
     super.dispose();
   }
 
@@ -37,24 +44,104 @@ class _EditBookScreenState extends ConsumerState<EditBookScreen> {
     if (_initialized) return;
     _titleController = TextEditingController(text: book.title);
     _authorController = TextEditingController(text: book.author);
-    _descriptionController = TextEditingController(text: book.description ?? '');
     _isbnController = TextEditingController(text: book.isbn ?? '');
+    _languageController = TextEditingController(text: book.language ?? '');
+    _locationController = TextEditingController(text: book.locationText ?? '');
     _condition = book.condition;
+    _locationLat = book.locationLat;
+    _locationLng = book.locationLng;
     _initialized = true;
+  }
+
+  Future<void> _useCurrentLocation() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _isLocating = true);
+    try {
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Location permission denied')),
+        );
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
+      );
+      _locationLat = position.latitude;
+      _locationLng = position.longitude;
+
+      String label = 'Current location';
+      try {
+        final placemarks =
+            await placemarkFromCoordinates(position.latitude, position.longitude);
+        if (placemarks.isNotEmpty) {
+          final p = placemarks.first;
+          final parts = [p.locality, p.administrativeArea]
+              .where((s) => s != null && s.isNotEmpty)
+              .toList();
+          if (parts.isNotEmpty) label = parts.join(', ');
+        }
+      } catch (_) {}
+
+      _locationController.text = label;
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Could not get location: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isLocating = false);
+    }
   }
 
   Future<void> _save(Book book) async {
     if (!_formKey.currentState!.validate()) return;
 
+    // Resolve location coordinates if manually typed
+    String locationText = _locationController.text.trim();
+    double? locationLat = _locationLat;
+    double? locationLng = _locationLng;
+
+    if (locationLat == null && locationText.isNotEmpty) {
+      try {
+        final locations = await locationFromAddress(locationText);
+        if (locations.isNotEmpty) {
+          locationLat = locations.first.latitude;
+          locationLng = locations.first.longitude;
+        }
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not find that location. Please try a different address.')),
+          );
+        }
+        return;
+      }
+    }
+
+    if (locationLat == null || locationLng == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please set a location for this book.')),
+        );
+      }
+      return;
+    }
+
     final updated = book.copyWith(
       title: _titleController.text.trim(),
       author: _authorController.text.trim(),
-      description: _descriptionController.text.trim().isEmpty
-          ? null
-          : _descriptionController.text.trim(),
       isbn: _isbnController.text.trim().isEmpty
           ? null
           : _isbnController.text.trim(),
+      language: _languageController.text.trim(),
+      locationText: locationText,
+      locationLat: locationLat,
+      locationLng: locationLng,
       condition: _condition,
     );
 
@@ -62,6 +149,7 @@ class _EditBookScreenState extends ConsumerState<EditBookScreen> {
     if (result != null && mounted) {
       ref.invalidate(bookProvider(widget.bookId));
       ref.invalidate(myBooksProvider);
+      ref.invalidate(booksProvider);
       context.pop();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -146,6 +234,9 @@ class _EditBookScreenState extends ConsumerState<EditBookScreen> {
                   // ISBN
                   _buildField('ISBN (optional)', _isbnController),
 
+                  // Language (required)
+                  _buildField('Language', _languageController, required: true, hint: 'e.g. English, Türkçe'),
+
                   // Condition
                   _buildLabel('Condition'),
                   const SizedBox(height: 8),
@@ -179,13 +270,60 @@ class _EditBookScreenState extends ConsumerState<EditBookScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Description
-                  _buildField(
-                    'Description (optional)',
-                    _descriptionController,
-                    isMultiline: true,
-                    hint: 'Describe the condition of your copy...',
+                  // Location (required)
+                  _buildLabel('Location'),
+                  const SizedBox(height: 7),
+                  TextFormField(
+                    controller: _locationController,
+                    onChanged: (_) {
+                      _locationLat = null;
+                      _locationLng = null;
+                    },
+                    decoration: const InputDecoration(
+                      hintText: 'City or neighborhood',
+                    ),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Location is required';
+                      }
+                      return null;
+                    },
+                    style: AppTypography.sansRegular.copyWith(fontSize: 15.5, color: AppColors.ink),
                   ),
+                  const SizedBox(height: 10),
+                  GestureDetector(
+                    onTap: _isLocating ? null : _useCurrentLocation,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: AppColors.paper2,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.line, width: 0.5),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          if (_isLocating)
+                            const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(AppColors.rust),
+                              ),
+                            )
+                          else
+                            const Icon(Icons.my_location, size: 18, color: AppColors.rust),
+                          const SizedBox(width: 8),
+                          Text(
+                            _isLocating ? 'Getting location…' : 'Use my current location',
+                            style: AppTypography.sansBold.copyWith(fontSize: 14, color: AppColors.rust),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
                 ],
               ),
             ),

@@ -1,5 +1,4 @@
 import 'book.dart';
-import 'profile.dart';
 
 /// A single book detected from a bookshelf photo by the scanner.
 ///
@@ -24,6 +23,9 @@ class DetectedBook {
   /// and is adjustable per book (or in bulk) on the review screen.
   BookCondition condition;
 
+  /// Language of the book - required, set in bulk on the review screen.
+  String? language;
+
   /// Whether this book is selected to be added in the batch.
   bool include;
 
@@ -44,6 +46,7 @@ class DetectedBook {
     this.publisher,
     this.pages,
     this.condition = BookCondition.good,
+    this.language,
     this.include = true,
     this.matched = false,
     this.isDuplicate = false,
@@ -51,9 +54,15 @@ class DetectedBook {
 
   /// Build a [Book] ready to be persisted, stamping in the owner's identity and
   /// location (mirrors the single add-book flow).
+  ///
+  /// Location parameters are required - caller must ensure profile has location
+  /// or provide explicit coordinates.
   Book toBook({
     required String userId,
-    Profile? profile,
+    required String locationText,
+    required double locationLat,
+    required double locationLng,
+    required String language,
   }) {
     final now = DateTime.now();
     return Book(
@@ -65,13 +74,14 @@ class DetectedBook {
           (description == null || description!.trim().isEmpty) ? null : description!.trim(),
       condition: condition,
       isbn: (isbn == null || isbn!.trim().isEmpty) ? null : isbn!.trim(),
+      language: language,
       coverImgUrl: coverUrl,
       publisher: publisher,
       publicationYear: publishYear,
       pages: pages,
-      locationText: profile?.formattedLocation,
-      locationLat: profile?.locationLat,
-      locationLng: profile?.locationLng,
+      locationText: locationText,
+      locationLat: locationLat,
+      locationLng: locationLng,
       createdAt: now,
       updatedAt: now,
     );

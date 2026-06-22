@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 
 import '../../config/theme.dart';
 import '../../models/models.dart';
@@ -25,11 +27,79 @@ class ScanReviewScreen extends ConsumerStatefulWidget {
 class _ScanReviewScreenState extends ConsumerState<ScanReviewScreen> {
   late final List<DetectedBook> _books;
   bool _isSaving = false;
+  bool _isLocating = false;
+
+  // Location for all books (required)
+  final _locationController = TextEditingController();
+  double? _locationLat;
+  double? _locationLng;
+
+  // Language for all books (required)
+  final _languageController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _books = List.of(widget.books);
+    // Prefill from profile
+    final profile = ref.read(currentProfileProvider);
+    if (profile != null) {
+      _locationController.text = profile.formattedLocation ?? '';
+      _locationLat = profile.locationLat;
+      _locationLng = profile.locationLng;
+    }
+  }
+
+  @override
+  void dispose() {
+    _locationController.dispose();
+    _languageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _useCurrentLocation() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _isLocating = true);
+    try {
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Location permission denied')),
+        );
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
+      );
+      _locationLat = position.latitude;
+      _locationLng = position.longitude;
+
+      String label = 'Current location';
+      try {
+        final placemarks =
+            await placemarkFromCoordinates(position.latitude, position.longitude);
+        if (placemarks.isNotEmpty) {
+          final p = placemarks.first;
+          final parts = [p.locality, p.administrativeArea]
+              .where((s) => s != null && s.isNotEmpty)
+              .toList();
+          if (parts.isNotEmpty) label = parts.join(', ');
+        }
+      } catch (_) {}
+
+      _locationController.text = label;
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Could not get location: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isLocating = false);
+    }
   }
 
   int get _selectedCount => _books.where((b) => b.include).length;
@@ -172,11 +242,61 @@ class _ScanReviewScreenState extends ConsumerState<ScanReviewScreen> {
     final selected = _books.where((b) => b.include).toList();
     if (selected.isEmpty) return;
 
+    // Validate language
+    final language = _languageController.text.trim();
+    if (language.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please set a language for the books.')),
+      );
+      return;
+    }
+
+    // Validate and resolve location
+    String locationText = _locationController.text.trim();
+    double? locationLat = _locationLat;
+    double? locationLng = _locationLng;
+
+    if (locationText.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please set a location for the books.')),
+      );
+      return;
+    }
+
+    if (locationLat == null && locationText.isNotEmpty) {
+      try {
+        final locations = await locationFromAddress(locationText);
+        if (locations.isNotEmpty) {
+          locationLat = locations.first.latitude;
+          locationLng = locations.first.longitude;
+        }
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not find that location. Please try a different address.')),
+          );
+        }
+        return;
+      }
+    }
+
+    if (locationLat == null || locationLng == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please set a valid location for the books.')),
+      );
+      return;
+    }
+
     setState(() => _isSaving = true);
 
-    final profile = ref.read(currentProfileProvider);
     final toCreate = selected
-        .map((d) => d.toBook(userId: currentUser.uid, profile: profile))
+        .map((d) => d.toBook(
+              userId: currentUser.uid,
+              locationText: locationText,
+              locationLat: locationLat!,
+              locationLng: locationLng!,
+              language: language,
+            ))
         .toList();
 
     final count = await ref.read(bookActionsProvider.notifier).createBooks(toCreate);
@@ -472,32 +592,103 @@ class _ScanReviewScreenState extends ConsumerState<ScanReviewScreen> {
         color: AppColors.paper,
         border: Border(top: BorderSide(color: AppColors.line, width: 0.5)),
       ),
-      child: GestureDetector(
-        onTap: (_isSaving || _selectedCount == 0) ? null : _save,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          decoration: BoxDecoration(
-            color: _selectedCount == 0 ? AppColors.ink3 : AppColors.rust,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Center(
-            child: _isSaving
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
-                  )
-                : Text(
-                    _selectedCount == 0
-                        ? 'Select books to add'
-                        : 'Add $_selectedCount ${_selectedCount == 1 ? 'book' : 'books'} to library',
-                    style:
-                        AppTypography.sansBold.copyWith(fontSize: 15.5, color: Colors.white),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Language field
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _languageController,
+                  style: AppTypography.sansRegular.copyWith(fontSize: 14, color: AppColors.ink),
+                  decoration: InputDecoration(
+                    hintText: 'Language (e.g. English)',
+                    hintStyle: AppTypography.sansRegular.copyWith(fontSize: 14, color: AppColors.ink3),
+                    prefixIcon: const Icon(Icons.language, size: 18, color: AppColors.ink3),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    isDense: true,
                   ),
+                ),
+              ),
+            ],
           ),
-        ),
+          const SizedBox(height: 8),
+          // Location field with GPS button
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _locationController,
+                  onChanged: (_) {
+                    _locationLat = null;
+                    _locationLng = null;
+                  },
+                  style: AppTypography.sansRegular.copyWith(fontSize: 14, color: AppColors.ink),
+                  decoration: InputDecoration(
+                    hintText: 'Location (city or area)',
+                    hintStyle: AppTypography.sansRegular.copyWith(fontSize: 14, color: AppColors.ink3),
+                    prefixIcon: const Icon(Icons.location_on_outlined, size: 18, color: AppColors.ink3),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: _isLocating ? null : _useCurrentLocation,
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.paper2,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.line, width: 0.5),
+                  ),
+                  child: _isLocating
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(AppColors.rust),
+                          ),
+                        )
+                      : const Icon(Icons.my_location, size: 18, color: AppColors.rust),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Save button
+          GestureDetector(
+            onTap: (_isSaving || _selectedCount == 0) ? null : _save,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              decoration: BoxDecoration(
+                color: _selectedCount == 0 ? AppColors.ink3 : AppColors.rust,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Center(
+                child: _isSaving
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
+                      )
+                    : Text(
+                        _selectedCount == 0
+                            ? 'Select books to add'
+                            : 'Add $_selectedCount ${_selectedCount == 1 ? 'book' : 'books'} to library',
+                        style:
+                            AppTypography.sansBold.copyWith(fontSize: 15.5, color: Colors.white),
+                      ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
