@@ -8,7 +8,7 @@ A community platform for book trading and connecting readers in your local area.
 
 | Platform | Version | Status |
 |----------|---------|--------|
-| iOS App | 1.0.0 (Build 9) | TestFlight Ready |
+| iOS App | 1.0.0 (Build 10) | TestFlight Ready |
 | Web App | 1.0.0 | Production Ready |
 | Android | - | Planned |
 
