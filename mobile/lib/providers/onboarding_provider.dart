@@ -32,3 +32,27 @@ class OnboardingNotifier extends StateNotifier<AsyncValue<bool>> {
     state = const AsyncValue.data(true);
   }
 }
+
+/// Welcome-gift banner (mock #3f): shows until the first book is added OR
+/// the user dismisses it (spec §5). Dismissal persists across launches.
+final welcomeBannerDismissedProvider =
+    StateNotifierProvider<WelcomeBannerNotifier, AsyncValue<bool>>((ref) {
+  return WelcomeBannerNotifier();
+});
+
+class WelcomeBannerNotifier extends StateNotifier<AsyncValue<bool>> {
+  WelcomeBannerNotifier() : super(const AsyncValue.loading()) {
+    _load();
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    state = AsyncValue.data(prefs.getBool('welcome_banner_dismissed') ?? false);
+  }
+
+  Future<void> dismiss() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('welcome_banner_dismissed', true);
+    state = const AsyncValue.data(true);
+  }
+}

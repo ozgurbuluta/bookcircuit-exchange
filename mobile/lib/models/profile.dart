@@ -18,6 +18,12 @@ class Profile {
   /// Languages the user reads (≥1 required by onboarding).
   final List<String> languages;
 
+  /// Centroid of the postal code area — the anchor for distance search.
+  /// This is NOT device GPS (which is never stored, spec §5): every neighbor
+  /// with the same postal code gets the same point.
+  final double? centroidLat;
+  final double? centroidLng;
+
   /// Points balance. New accounts are granted 200 exactly once (spec §4.2).
   final int points;
 
@@ -63,6 +69,8 @@ class Profile {
     this.postalCode,
     this.areaLabel,
     this.languages = const [],
+    this.centroidLat,
+    this.centroidLng,
     this.points = 0,
     this.pointsGranted = false,
     this.ratingAvg = 0,
@@ -118,6 +126,8 @@ class Profile {
       areaLabel: data['areaLabel'] as String?,
       languages:
           (data['languages'] as List<dynamic>?)?.cast<String>() ?? const [],
+      centroidLat: (data['centroidLat'] as num?)?.toDouble(),
+      centroidLng: (data['centroidLng'] as num?)?.toDouble(),
       points: (data['points'] as num?)?.toInt() ?? 0,
       pointsGranted: data['pointsGranted'] as bool? ?? false,
       ratingAvg: (data['ratingAvg'] as num?)?.toDouble() ?? 0,
@@ -142,6 +152,8 @@ class Profile {
       'postalCode': postalCode,
       'areaLabel': areaLabel,
       'languages': languages,
+      'centroidLat': centroidLat,
+      'centroidLng': centroidLng,
       'points': points,
       'pointsGranted': pointsGranted,
       'ratingAvg': ratingAvg,
@@ -162,6 +174,8 @@ class Profile {
     String? postalCode,
     String? areaLabel,
     List<String>? languages,
+    double? centroidLat,
+    double? centroidLng,
     int? points,
     bool? pointsGranted,
     double? ratingAvg,
@@ -180,6 +194,8 @@ class Profile {
       postalCode: postalCode ?? this.postalCode,
       areaLabel: areaLabel ?? this.areaLabel,
       languages: languages ?? this.languages,
+      centroidLat: centroidLat ?? this.centroidLat,
+      centroidLng: centroidLng ?? this.centroidLng,
       points: points ?? this.points,
       pointsGranted: pointsGranted ?? this.pointsGranted,
       ratingAvg: ratingAvg ?? this.ratingAvg,

@@ -5,6 +5,8 @@ import '../../config/theme.dart';
 import '../../config/router.dart';
 import '../../providers/onboarding_provider.dart';
 
+/// Tour (mocks #3b–#3d): three cards, skippable at every step (spec §5).
+/// Skip and finish both land on neighborhood setup; the tour never shows again.
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
 
@@ -16,40 +18,37 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
 
-  final List<OnboardingPage> _pages = [
-    OnboardingPage(
-      title: 'Discover Books\nNearby',
-      description:
-          'Find amazing books in your neighborhood. Browse what your neighbors are reading and ready to share.',
-      icon: Icons.map_outlined,
-      accentColor: AppColors.rust,
+  static final List<_TourPage> _pages = [
+    _TourPage(
+      icon: Icons.auto_stories_outlined,
+      title: "Shelve what you've finished",
+      body:
+          'Point the camera at a cover or barcode — title, author and edition fill themselves in. You just confirm the language and how worn it is.',
+      piri:
+          'Your bookcase at home becomes your shelf here. Four books is a fine start.',
     ),
-    OnboardingPage(
-      title: 'Trade With\nYour Community',
-      description:
-          'Exchange books with fellow readers. No money needed — just the joy of sharing stories.',
-      icon: Icons.swap_horiz_rounded,
-      accentColor: AppColors.sage,
+    _TourPage(
+      icon: Icons.directions_walk_outlined,
+      title: 'Trade with neighbors, on foot',
+      body:
+          "Search by postal code and see what's on shelves around you. Ask for a book, agree on a spot over chat, and swap it hand to hand.",
+      piri:
+          'No shipping, no couriers. Nothing travels farther than a pleasant walk.',
     ),
-    OnboardingPage(
-      title: 'Build Your\nReading Circle',
-      description:
-          'Connect with local book lovers. Chat, meet up, and grow your reading community together.',
-      icon: Icons.people_outline_rounded,
-      accentColor: AppColors.ink,
+    _TourPage(
+      icon: Icons.toll_outlined,
+      title: 'Every book is a flat 50 pts',
+      body:
+          'Nothing to haggle over. Request any book for 50 pts — or offer one of yours instead. Every book you pass on earns 50 back.',
+      piri:
+          'Your first four books are on the club. Spend them slowly — rather my style.',
     ),
   ];
 
-  void _onPageChanged(int page) {
-    setState(() {
-      _currentPage = page;
-    });
-  }
-
-  Future<void> _completeOnboarding() async {
+  Future<void> _finishTour() async {
     await ref.read(onboardingNotifierProvider.notifier).completeOnboarding();
     if (mounted) {
-      context.go(AppRoutes.welcome);
+      context.go(AppRoutes.setup);
     }
   }
 
@@ -61,85 +60,70 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isLast = _currentPage == _pages.length - 1;
+
     return Scaffold(
-      backgroundColor: AppColors.paper,
+      backgroundColor: AppColors.bg,
       body: SafeArea(
         child: Column(
           children: [
-            // Skip button
             Align(
               alignment: Alignment.topRight,
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: TextButton(
-                  onPressed: _completeOnboarding,
+                  key: const Key('skip_tour'),
+                  onPressed: _finishTour,
                   child: Text(
-                    'Skip',
-                    style: AppTypography.sansRegular.copyWith(
-                      fontSize: 16,
+                    'Skip the tour',
+                    style: AppTypography.sansSemiBold.copyWith(
+                      fontSize: 13,
                       color: AppColors.ink3,
                     ),
                   ),
                 ),
               ),
             ),
-
-            // Page content
             Expanded(
               child: PageView.builder(
                 controller: _pageController,
-                onPageChanged: _onPageChanged,
+                onPageChanged: (page) => setState(() => _currentPage = page),
                 itemCount: _pages.length,
-                itemBuilder: (context, index) {
-                  return _buildPage(_pages[index]);
-                },
+                itemBuilder: (context, index) => _TourCard(page: _pages[index]),
               ),
             ),
-
-            // Page indicator dots
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
+              padding: const EdgeInsets.symmetric(vertical: 20),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(
-                  _pages.length,
-                  (index) => _buildDot(index),
-                ),
+                children: List.generate(_pages.length, (index) {
+                  final isActive = index == _currentPage;
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    width: isActive ? 22 : 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: isActive ? AppColors.green : AppColors.line,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  );
+                }),
               ),
             ),
-
-            // Get Started button
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
               child: SizedBox(
                 width: double.infinity,
-                height: 56,
                 child: ElevatedButton(
-                  onPressed: _currentPage == _pages.length - 1
-                      ? _completeOnboarding
-                      : () {
-                          _pageController.nextPage(
+                  key: const Key('tour_next'),
+                  onPressed: isLast
+                      ? _finishTour
+                      : () => _pageController.nextPage(
                             duration: const Duration(milliseconds: 300),
                             curve: Curves.easeInOut,
-                          );
-                        },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.rust,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(28),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: Text(
-                    _currentPage == _pages.length - 1
-                        ? 'Get Started'
-                        : 'Continue',
-                    style: AppTypography.sansMedium.copyWith(
-                      fontSize: 18,
-                      color: Colors.white,
-                    ),
-                  ),
+                          ),
+                  child: Text(isLast ? 'Join the club' : 'Next'),
                 ),
               ),
             ),
@@ -148,91 +132,95 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       ),
     );
   }
+}
 
-  Widget _buildPage(OnboardingPage page) {
+class _TourPage {
+  final IconData icon;
+  final String title;
+  final String body;
+  final String piri;
+
+  const _TourPage({
+    required this.icon,
+    required this.title,
+    required this.body,
+    required this.piri,
+  });
+}
+
+class _TourCard extends StatelessWidget {
+  final _TourPage page;
+
+  const _TourCard({required this.page});
+
+  @override
+  Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
+      padding: const EdgeInsets.symmetric(horizontal: 28),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Illustration placeholder
           Container(
-            width: 280,
-            height: 280,
-            decoration: BoxDecoration(
-              color: page.accentColor.withValues(alpha: 0.1),
+            width: 120,
+            height: 120,
+            decoration: const BoxDecoration(
+              color: AppColors.greenTint,
               shape: BoxShape.circle,
             ),
-            child: Center(
-              child: Container(
-                width: 200,
-                height: 200,
-                decoration: BoxDecoration(
-                  color: page.accentColor.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  page.icon,
-                  size: 100,
-                  color: page.accentColor,
-                ),
-              ),
-            ),
+            child: Icon(page.icon, size: 54, color: AppColors.green),
           ),
-          const SizedBox(height: 48),
-
-          // Title
+          const SizedBox(height: 36),
           Text(
             page.title,
             textAlign: TextAlign.center,
-            style: AppTypography.serifSemiBold.copyWith(
-              fontSize: 32,
+            style: AppTypography.serifRegular.copyWith(
+              fontSize: 26,
               color: AppColors.ink,
               height: 1.2,
             ),
           ),
-          const SizedBox(height: 16),
-
-          // Description
+          const SizedBox(height: 14),
           Text(
-            page.description,
+            page.body,
             textAlign: TextAlign.center,
             style: AppTypography.sansRegular.copyWith(
-              fontSize: 16,
-              color: AppColors.ink3,
-              height: 1.5,
+              fontSize: 14.5,
+              color: AppColors.ink2,
+              height: 1.55,
+            ),
+          ),
+          const SizedBox(height: 22),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 11),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              border: Border.all(color: AppColors.line),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: 'Piri: ',
+                    style: AppTypography.sansExtraBold.copyWith(
+                      fontSize: 12.5,
+                      color: AppColors.green,
+                    ),
+                  ),
+                  TextSpan(
+                    text: page.piri,
+                    style: AppTypography.sansRegular.copyWith(
+                      fontSize: 12.5,
+                      color: AppColors.ink2,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
       ),
     );
   }
-
-  Widget _buildDot(int index) {
-    bool isActive = index == _currentPage;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      margin: const EdgeInsets.symmetric(horizontal: 4),
-      width: isActive ? 24 : 8,
-      height: 8,
-      decoration: BoxDecoration(
-        color: isActive ? AppColors.rust : AppColors.ink.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(4),
-      ),
-    );
-  }
-}
-
-class OnboardingPage {
-  final String title;
-  final String description;
-  final IconData icon;
-  final Color accentColor;
-
-  OnboardingPage({
-    required this.title,
-    required this.description,
-    required this.icon,
-    required this.accentColor,
-  });
 }

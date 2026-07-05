@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../models/models.dart';
 import '../providers/auth_provider.dart';
+import '../providers/onboarding_provider.dart';
 import '../screens/screens.dart';
 import 'theme.dart';
 
@@ -11,6 +12,8 @@ import 'theme.dart';
 class AppRoutes {
   static const String splash = '/';
   static const String onboarding = '/onboarding';
+  static const String setup = '/setup';
+  static const String firstShelf = '/first-shelf';
   static const String welcome = '/welcome';
   static const String emailSignIn = '/email-sign-in';
   static const String home = '/home';
@@ -32,6 +35,7 @@ class AppRoutes {
 /// Router provider
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authProvider);
+  final tourState = ref.watch(onboardingNotifierProvider);
 
   return GoRouter(
     initialLocation: AppRoutes.splash,
@@ -44,14 +48,26 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isOnAuthPage = currentPath == AppRoutes.welcome ||
                            currentPath == AppRoutes.emailSignIn;
       final isOnSplash = currentPath == AppRoutes.splash;
+      final isOnOnboarding = currentPath == AppRoutes.onboarding ||
+                             currentPath == AppRoutes.setup ||
+                             currentPath == AppRoutes.firstShelf;
 
       // Show splash while loading
       if (isLoading) {
         return isOnSplash ? null : AppRoutes.splash;
       }
 
-      // Authenticated users go to home
       if (isAuthenticated) {
+        // Onboarding gate (spec §2): tour once, then neighborhood setup.
+        // Server truth (profile.hasCompletedSetup), not just a local flag.
+        final needsSetup = authState.needsNeighborhoodSetup;
+        if (needsSetup) {
+          final tourSeen = tourState.value ?? true; // don't gate while loading
+          final target =
+              tourSeen ? AppRoutes.setup : AppRoutes.onboarding;
+          return isOnOnboarding ? null : target;
+        }
+
         if (isOnAuthPage || isOnSplash) {
           return AppRoutes.home;
         }
@@ -73,6 +89,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.onboarding,
         builder: (context, state) => const OnboardingScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.setup,
+        builder: (context, state) => const NeighborhoodSetupScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.firstShelf,
+        builder: (context, state) => const FirstShelfScreen(),
       ),
       GoRoute(
         path: AppRoutes.welcome,

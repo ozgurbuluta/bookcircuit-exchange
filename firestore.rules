@@ -51,6 +51,7 @@ service cloud.firestore {
             affectedKeys().hasOnly([
               'fullName', 'name', 'avatarInitials', 'avatarUrl',
               'postalCode', 'areaLabel', 'languages',
+              'centroidLat', 'centroidLng',
               'notifyNewBookNearby', 'notifyJournal', 'fcmToken', 'updatedAt'
             ])
             ||

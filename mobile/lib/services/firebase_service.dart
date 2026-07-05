@@ -77,6 +77,8 @@ class FirebaseService {
       'postalCode': profile.postalCode,
       'areaLabel': profile.areaLabel,
       'languages': profile.languages,
+      'centroidLat': profile.centroidLat,
+      'centroidLng': profile.centroidLng,
       'notifyNewBookNearby': profile.notifyNewBookNearby,
       'notifyJournal': profile.notifyJournal,
       'updatedAt': FieldValue.serverTimestamp(),
