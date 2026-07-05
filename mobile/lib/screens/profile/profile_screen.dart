@@ -1,76 +1,86 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../config/theme.dart';
-import '../../config/router.dart';
-import '../../models/book.dart';
-import '../../models/trade.dart';
-import '../../providers/providers.dart';
-import '../../widgets/widgets.dart';
+import 'package:intl/intl.dart';
 
-class ProfileScreen extends ConsumerWidget {
+import '../../config/router.dart';
+import '../../config/theme.dart';
+import '../../models/models.dart';
+import '../../providers/providers.dart';
+import '../../widgets/book_cover.dart';
+import '../../widgets/points_badge.dart';
+import '../../widgets/rating_stars.dart';
+
+enum _ShelfFilter { onShelf, inTrade }
+
+/// My shelf (mock #1h): profile header with rating + stats, then the book
+/// grid with "In trade" overlays and per-book visibility toggles.
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
-  void _showComingSoon(BuildContext context, String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '$feature coming soon!',
-          style: AppTypography.sansRegular.copyWith(color: Colors.white),
-        ),
-        backgroundColor: AppColors.ink2,
-        duration: const Duration(seconds: 2),
-      ),
-    );
+  @override
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  _ShelfFilter _filter = _ShelfFilter.onShelf;
+
+  Future<void> _toggleVisibility(Book book) async {
+    final updated = book.copyWith(visible: !book.visible);
+    await ref.read(bookActionsProvider.notifier).updateBook(updated);
+    ref.invalidate(myBooksProvider);
   }
 
-  void _showAddOptions(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: const BoxDecoration(
-          color: AppColors.paper,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+  @override
+  Widget build(BuildContext context) {
+    final profile = ref.watch(currentProfileProvider);
+    final booksAsync = ref.watch(myBooksProvider);
+
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      appBar: AppBar(
+        title: const Text('My shelf'),
+        actions: [
+          IconButton(
+            key: const Key('shelf_settings'),
+            icon: const Icon(Icons.settings_outlined, size: 22),
+            onPressed: () => _showSettings(context),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(myBooksProvider);
+            await ref.read(authProvider.notifier).refreshProfile();
+          },
+          child: ListView(
+            padding: const EdgeInsets.all(20),
             children: [
-              Container(
-                margin: const EdgeInsets.only(top: 12),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.ink.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(2),
+              if (profile != null) _ProfileHeader(profile: profile),
+              const SizedBox(height: 20),
+              booksAsync.when(
+                loading: () => const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 60),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+                error: (e, _) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 40),
+                  child: Center(
+                    child: Text(
+                      'Could not load your shelf. Pull to retry.',
+                      style: AppTypography.sansRegular
+                          .copyWith(color: AppColors.ink2),
+                    ),
+                  ),
+                ),
+                data: (books) => _ShelfBody(
+                  books: books,
+                  filter: _filter,
+                  onFilterChanged: (f) => setState(() => _filter = f),
+                  onToggleVisibility: _toggleVisibility,
                 ),
               ),
-              const SizedBox(height: 8),
-              ListTile(
-                leading: const Icon(Icons.edit_outlined, color: AppColors.ink2),
-                title: Text('Add a book',
-                    style: AppTypography.sansSemiBold.copyWith(color: AppColors.ink)),
-                subtitle: Text('Search and add one book',
-                    style: AppTypography.sansRegular.copyWith(fontSize: 12.5, color: AppColors.ink3)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  context.push(AppRoutes.addBook);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.document_scanner_outlined, color: AppColors.rust),
-                title: Text('Scan a shelf',
-                    style: AppTypography.sansSemiBold.copyWith(color: AppColors.ink)),
-                subtitle: Text('Photograph a shelf to add many at once',
-                    style: AppTypography.sansRegular.copyWith(fontSize: 12.5, color: AppColors.ink3)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  context.push(AppRoutes.scanShelf);
-                },
-              ),
-              const SizedBox(height: 12),
             ],
           ),
         ),
@@ -78,408 +88,367 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
+  void _showSettings(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.bg,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit_outlined, color: AppColors.ink2),
+              title: Text('Edit profile',
+                  style:
+                      AppTypography.sansSemiBold.copyWith(color: AppColors.ink)),
+              onTap: () {
+                Navigator.pop(ctx);
+                context.push(AppRoutes.editProfile);
+              },
+            ),
+            ListTile(
+              leading:
+                  const Icon(Icons.logout_outlined, color: AppColors.terracotta),
+              title: Text('Sign out',
+                  style: AppTypography.sansSemiBold
+                      .copyWith(color: AppColors.terracotta)),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await ref.read(authProvider.notifier).signOut();
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileHeader extends ConsumerWidget {
+  final Profile profile;
+
+  const _ProfileHeader({required this.profile});
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final profile = ref.watch(currentProfileProvider);
-    final myBooksAsync = ref.watch(myBooksProvider);
+    final memberSince = profile.createdAt != null
+        ? DateFormat('MMMM yyyy').format(profile.createdAt!)
+        : null;
 
-    return Scaffold(
-      backgroundColor: AppColors.paper,
-      body: SafeArea(
-        bottom: false,
-        child: CustomScrollView(
-          slivers: [
-            // Header
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    AppIconButton(
-                      icon: Icons.settings_outlined,
-                      onPressed: () => context.push(AppRoutes.editProfile),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border.all(color: AppColors.line),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: const BoxDecoration(
+                  color: AppColors.greenTint,
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Text(
+                    profile.avatarInitials,
+                    style: AppTypography.sansExtraBold.copyWith(
+                      fontSize: 18,
+                      color: AppColors.green,
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-
-            // Profile info
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
+              const SizedBox(width: 12),
+              Expanded(
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    UserAvatar(profile: profile, size: 88),
-                    const SizedBox(height: 14),
                     Text(
-                      profile?.displayName ?? 'You',
-                      style: AppTypography.serifSemiBold.copyWith(
-                        fontSize: 25,
+                      profile.displayName,
+                      style: AppTypography.sansExtraBold.copyWith(
+                        fontSize: 17,
                         color: AppColors.ink,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      profile?.formattedLocation ?? 'Set your location',
+                      [
+                        if (profile.areaLabel != null) profile.areaLabel!,
+                        if (memberSince != null) 'member since $memberSince',
+                      ].join(' · '),
                       style: AppTypography.sansRegular.copyWith(
-                        fontSize: 13.5,
+                        fontSize: 12,
                         color: AppColors.ink3,
                       ),
                     ),
-                    if (profile?.bio != null) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        profile!.bio!,
-                        style: AppTypography.serifItalic.copyWith(
-                          fontSize: 15,
-                          height: 1.5,
-                          color: AppColors.ink2,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    OutlinedButton(
-                      onPressed: () => context.push(AppRoutes.editProfile),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-                      ),
-                      child: Text(
-                        'Edit profile',
-                        style: AppTypography.sansBold.copyWith(fontSize: 14),
-                      ),
-                    ),
                   ],
                 ),
               ),
-            ),
-
-            // Stats
-            SliverToBoxAdapter(
-              child: Container(
-                margin: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-                decoration: BoxDecoration(
-                  color: AppColors.paper2,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: AppColors.line, width: 0.5),
-                ),
-                child: Row(
-                  children: [
-                    _StatItem(value: '0', label: 'Trades'),
-                    _StatItem(
-                      value: myBooksAsync.when(
-                        data: (books) => books.length.toString(),
-                        loading: () => '-',
-                        error: (_, __) => '0',
-                      ),
-                      label: 'On shelf',
-                    ),
-                    const _StatItem(value: '-', label: 'Rating'),
-                    const _StatItem(value: '0', label: 'Saved'),
-                  ],
-                ),
+              PointsBadge(
+                points: profile.points,
+                onTap: () => context.push(AppRoutes.trades),
               ),
-            ),
-
-            // My shelf header
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(0, 28, 0, 12),
-                child: SectionHeader(
-                  title: 'My shelf',
-                  action: 'Add book',
-                  onAction: () => _showAddOptions(context),
-                ),
-              ),
-            ),
-
-            // My books
-            myBooksAsync.when(
-              data: (books) => SliverToBoxAdapter(
-                child: SizedBox(
-                  height: 230,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    itemCount: books.length + 1,
-                    itemBuilder: (context, index) {
-                      if (index == books.length) {
-                        return _AddBookTile(onTap: () => _showAddOptions(context));
-                      }
-                      final book = books[index];
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 16),
-                        child: SizedBox(
-                          width: 104,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              GestureDetector(
-                                onTap: () => context.push('/book/${book.id}'),
-                                child: Stack(
-                                  children: [
-                                    BookCover(
-                                      imageUrl: book.coverImgUrl,
-                                      title: book.title,
-                                      author: book.author,
-                                      width: 104,
-                                    ),
-                                    if (book.status == BookStatus.inTrade)
-                                      Positioned(
-                                        top: 7,
-                                        left: 7,
-                                        child: StatusPill(status: TradeStatus.requested),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                book.title,
-                                style: AppTypography.serifSemiBold.copyWith(
-                                  fontSize: 13.5,
-                                  color: AppColors.ink,
-                                  height: 1.2,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 4),
-                              ConditionBadge(condition: book.condition, small: true),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
+            ],
+          ),
+          if (profile.ratingCount > 0) ...[
+            const SizedBox(height: 12),
+            Row(
+              key: const Key('shelf_rating'),
+              children: [
+                RatingStars(rating: profile.ratingAvg.round(), size: 16),
+                const SizedBox(width: 8),
+                Text(
+                  '${profile.ratingAvg.toStringAsFixed(1)} from ${profile.tradeCount} trades',
+                  style: AppTypography.sansSemiBold.copyWith(
+                    fontSize: 12.5,
+                    color: AppColors.ink2,
                   ),
                 ),
-              ),
-              loading: () => const SliverToBoxAdapter(
-                child: Center(child: CircularProgressIndicator()),
-              ),
-              error: (error, _) => SliverToBoxAdapter(
-                child: Center(child: Text('Error: $error')),
-              ),
-            ),
-
-            // Settings
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 28, 20, 0),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.paper2,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: AppColors.line, width: 0.5),
-                  ),
-                  child: Column(
-                    children: [
-                      _SettingsRow(
-                        icon: Icons.location_on_outlined,
-                        label: 'Reading location',
-                        value: profile?.formattedLocation ?? 'Set location',
-                        onTap: () => context.push(AppRoutes.editProfile),
-                      ),
-                      _SettingsRow(
-                        icon: Icons.notifications_outlined,
-                        label: 'Notifications',
-                        value: 'On',
-                        onTap: () => _showComingSoon(context, 'Notifications'),
-                      ),
-                      _SettingsRow(
-                        icon: Icons.favorite_outline,
-                        label: 'Saved books',
-                        value: '0',
-                        onTap: () => _showComingSoon(context, 'Saved books'),
-                      ),
-                      _SettingsRow(
-                        icon: Icons.settings_outlined,
-                        label: 'Settings',
-                        value: '',
-                        onTap: () => context.push(AppRoutes.editProfile),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            // Sign out
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 22, 20, 120),
-                child: Center(
-                  child: GestureDetector(
-                    onTap: () async {
-                      await ref.read(authProvider.notifier).signOut();
-                      if (context.mounted) {
-                        context.go(AppRoutes.welcome);
-                      }
-                    },
-                    child: Text(
-                      'Sign out',
-                      style: AppTypography.sansSemiBold.copyWith(
-                        fontSize: 13,
-                        color: AppColors.rust2,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+              ],
             ),
           ],
-        ),
+        ],
       ),
     );
   }
 }
 
-class _StatItem extends StatelessWidget {
-  final String value;
-  final String label;
+class _ShelfBody extends StatelessWidget {
+  final List<Book> books;
+  final _ShelfFilter filter;
+  final ValueChanged<_ShelfFilter> onFilterChanged;
+  final Future<void> Function(Book) onToggleVisibility;
 
-  const _StatItem({required this.value, required this.label});
+  const _ShelfBody({
+    required this.books,
+    required this.filter,
+    required this.onFilterChanged,
+    required this.onToggleVisibility,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: const BoxDecoration(
-          border: Border(left: BorderSide(color: AppColors.line2, width: 0.5)),
-        ),
-        child: Column(
+    final owned =
+        books.where((b) => b.status != BookStatus.tradedAway).toList();
+    final onShelf =
+        owned.where((b) => b.status == BookStatus.onShelf).toList();
+    final inTrade =
+        owned.where((b) => b.status == BookStatus.inTrade).toList();
+
+    final visible = filter == _ShelfFilter.onShelf ? onShelf : inTrade;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            Text(
-              value,
-              style: AppTypography.serifSemiBold.copyWith(
-                fontSize: 21,
-                color: AppColors.ink,
-              ),
+            _FilterChip(
+              key: const Key('filter_on_shelf'),
+              label: 'My shelf · ${onShelf.length}',
+              selected: filter == _ShelfFilter.onShelf,
+              onTap: () => onFilterChanged(_ShelfFilter.onShelf),
             ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: AppTypography.sansSemiBold.copyWith(
-                fontSize: 11.5,
-                color: AppColors.ink3,
-              ),
+            const SizedBox(width: 8),
+            _FilterChip(
+              key: const Key('filter_in_trade'),
+              label: 'In trades · ${inTrade.length}',
+              selected: filter == _ShelfFilter.inTrade,
+              onTap: () => onFilterChanged(_ShelfFilter.inTrade),
             ),
           ],
         ),
-      ),
+        const SizedBox(height: 16),
+        if (visible.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 40),
+            child: Center(
+              child: Column(
+                children: [
+                  const Icon(Icons.auto_stories_outlined,
+                      size: 40, color: AppColors.piriMoss),
+                  const SizedBox(height: 12),
+                  Text(
+                    filter == _ShelfFilter.onShelf
+                        ? "Shelves with a book or two on them get found. Scan one whenever you're ready — no rush."
+                        : 'No books in trades right now.',
+                    textAlign: TextAlign.center,
+                    style: AppTypography.sansRegular.copyWith(
+                      fontSize: 13,
+                      color: AppColors.ink2,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              childAspectRatio: 0.52,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 14,
+            ),
+            itemCount: visible.length,
+            itemBuilder: (context, index) => _ShelfBookTile(
+              book: visible[index],
+              onToggleVisibility: onToggleVisibility,
+            ),
+          ),
+      ],
     );
   }
 }
 
-class _SettingsRow extends StatelessWidget {
-  final IconData icon;
+class _FilterChip extends StatelessWidget {
   final String label;
-  final String value;
-  final VoidCallback? onTap;
+  final bool selected;
+  final VoidCallback onTap;
 
-  const _SettingsRow({
-    required this.icon,
+  const _FilterChip({
+    super.key,
     required this.label,
-    required this.value,
-    this.onTap,
+    required this.selected,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: AppColors.line2, width: 0.5)),
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.greenTint : AppColors.surface,
+          border: Border.all(
+            color: selected ? AppColors.green : AppColors.line,
+          ),
+          borderRadius: BorderRadius.circular(999),
         ),
-        child: Row(
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: AppColors.rust.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(9),
-              ),
-              child: Icon(icon, size: 18, color: AppColors.rust),
-            ),
-            const SizedBox(width: 13),
-            Expanded(
-              child: Text(
-                label,
-                style: AppTypography.sansSemiBold.copyWith(
-                  fontSize: 15,
-                  color: AppColors.ink,
-                ),
-              ),
-            ),
-            if (value.isNotEmpty)
-              Text(
-                value,
-                style: AppTypography.sansRegular.copyWith(
-                  fontSize: 13.5,
-                  color: AppColors.ink3,
-                ),
-              ),
-            const SizedBox(width: 8),
-            Icon(
-              Icons.chevron_right,
-              size: 17,
-              color: AppColors.ink.withValues(alpha: 0.22),
-            ),
-          ],
+        child: Text(
+          label,
+          style: AppTypography.sansBold.copyWith(
+            fontSize: 12.5,
+            color: selected ? AppColors.green : AppColors.ink2,
+          ),
         ),
       ),
     );
   }
 }
 
-class _AddBookTile extends StatelessWidget {
-  final VoidCallback onTap;
+class _ShelfBookTile extends ConsumerWidget {
+  final Book book;
+  final Future<void> Function(Book) onToggleVisibility;
 
-  const _AddBookTile({required this.onTap});
+  const _ShelfBookTile({
+    required this.book,
+    required this.onToggleVisibility,
+  });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
-      onTap: onTap,
-      child: SizedBox(
-        width: 104,
-        child: Column(
-          children: [
-            Container(
-              width: 104,
-              height: 156,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(5),
-                border: Border.all(
-                  color: AppColors.line,
-                  width: 1.5,
-                  style: BorderStyle.solid,
-                ),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.add_box_outlined, size: 26, color: AppColors.ink3),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Add book',
-                    style: AppTypography.sansSemiBold.copyWith(
-                      fontSize: 12,
-                      color: AppColors.ink3,
+      onTap: () =>
+          context.push(AppRoutes.bookDetail.replaceFirst(':id', book.id)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: Opacity(
+                    opacity: book.visible ? 1 : 0.45,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) => BookCover(
+                        title: book.title,
+                        author: book.author,
+                        coverColorKey: book.coverColorKey,
+                        width: constraints.maxWidth,
+                        height: constraints.maxHeight,
+                        showShadow: false,
+                      ),
                     ),
                   ),
-                ],
-              ),
+                ),
+                if (book.status == BookStatus.inTrade)
+                  Positioned(
+                    left: 6,
+                    top: 6,
+                    child: Container(
+                      key: Key('in_trade_${book.id}'),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppColors.honey,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        'In trade',
+                        style: AppTypography.sansExtraBold.copyWith(
+                          fontSize: 9.5,
+                          color: AppColors.honeyDeep,
+                        ),
+                      ),
+                    ),
+                  ),
+                if (book.status == BookStatus.onShelf)
+                  Positioned(
+                    right: 4,
+                    top: 4,
+                    child: GestureDetector(
+                      key: Key('visibility_${book.id}'),
+                      onTap: () => onToggleVisibility(book),
+                      child: Container(
+                        padding: const EdgeInsets.all(5),
+                        decoration: BoxDecoration(
+                          color: AppColors.surface.withValues(alpha: 0.92),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          book.visible
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                          size: 14,
+                          color:
+                              book.visible ? AppColors.ink2 : AppColors.ink3,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            book.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.sansBold.copyWith(
+              fontSize: 11.5,
+              color: AppColors.ink,
+            ),
+          ),
+          Text(
+            book.author,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.sansRegular.copyWith(
+              fontSize: 10.5,
+              color: AppColors.ink3,
+            ),
+          ),
+        ],
       ),
     );
   }
