@@ -19,7 +19,8 @@ class AppRoutes {
   static const String home = '/home';
   static const String journal = '/journal';
   static const String shelf = '/shelf';
-  static const String discover = '/discover';
+  static const String map = '/map';
+  static const String notifications = '/notifications';
   static const String trades = '/trades';
   static const String messages = '/messages';
   static const String profile = '/profile';
@@ -137,15 +138,19 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
         ],
       ),
-      // Pushed screens (not tabs): My trades via the points badge (spec §2),
-      // map/discover until Phase G folds it into Home.
+      // Pushed screens (not tabs): My trades via the points badge, map via
+      // the Home teaser, notifications via the bell (spec §2).
       GoRoute(
         path: AppRoutes.trades,
         builder: (context, state) => const TradesScreen(),
       ),
       GoRoute(
-        path: AppRoutes.discover,
-        builder: (context, state) => const DiscoverScreen(),
+        path: AppRoutes.map,
+        builder: (context, state) => const MapScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.notifications,
+        builder: (context, state) => const NotificationsScreen(),
       ),
       GoRoute(
         path: AppRoutes.profile,

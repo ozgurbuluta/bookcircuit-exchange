@@ -125,6 +125,29 @@ class FirebaseService {
     return books;
   }
 
+  /// Fetch requestable books whose geohash falls in any of [cells]
+  /// (a centroid cell + neighbors covering the search radius). Prefix range
+  /// queries keep the read set close to the neighborhood instead of the
+  /// whole collection.
+  static Future<List<Book>> getBooksByGeohashCells(List<String> cells) async {
+    final results = <String, Book>{};
+    for (final cell in cells) {
+      final snapshot = await db
+          .collection('books')
+          .where('status', isEqualTo: 'on_shelf')
+          .where('visible', isEqualTo: true)
+          .orderBy('geohash')
+          .startAt([cell])
+          .endAt(['$cell~'])
+          .limit(100)
+          .get();
+      for (final doc in snapshot.docs) {
+        results[doc.id] = _docToBook(doc);
+      }
+    }
+    return results.values.toList();
+  }
+
   /// Get book by ID
   static Future<Book?> getBook(String bookId) async {
     final doc = await db.collection('books').doc(bookId).get();

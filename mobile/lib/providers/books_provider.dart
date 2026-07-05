@@ -1,97 +1,114 @@
-import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../config/env.dart';
 import '../models/models.dart';
 import '../services/firebase_service.dart';
-import '../config/env.dart';
+import '../utils/geo_search.dart';
+import '../utils/geohash.dart';
+import 'auth_provider.dart';
 
-/// Search parameters state
+/// Search parameters (spec §7): centered on the user's postal centroid,
+/// 1 km default radius, optional text query and language filter.
 class BookSearchParams {
   final String? query;
-  final String? genre;
-  final double? lat;
-  final double? lng;
+  final String? language;
   final double radius;
 
   const BookSearchParams({
     this.query,
-    this.genre,
-    this.lat,
-    this.lng,
+    this.language,
     this.radius = Env.defaultSearchRadius,
   });
 
   BookSearchParams copyWith({
     String? query,
-    String? genre,
-    double? lat,
-    double? lng,
+    String? language,
     double? radius,
+    bool clearLanguage = false,
   }) {
     return BookSearchParams(
       query: query ?? this.query,
-      genre: genre ?? this.genre,
-      lat: lat ?? this.lat,
-      lng: lng ?? this.lng,
+      language: clearLanguage ? null : (language ?? this.language),
       radius: radius ?? this.radius,
     );
   }
-
-  bool get hasLocation => lat != null && lng != null;
 }
 
 /// Search params provider
 final bookSearchParamsProvider =
     StateProvider<BookSearchParams>((ref) => const BookSearchParams());
 
-/// Calculate distance between two points (Haversine formula)
-double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
-  const R = 6371; // Earth's radius in km
-  final dLat = (lat2 - lat1) * pi / 180;
-  final dLon = (lon2 - lon1) * pi / 180;
-  final a = sin(dLat / 2) * sin(dLat / 2) +
-      cos(lat1 * pi / 180) * cos(lat2 * pi / 180) *
-      sin(dLon / 2) * sin(dLon / 2);
-  final c = 2 * atan2(sqrt(a), sqrt(1 - a));
-  return R * c;
-}
-
-/// Books search results provider - cached to avoid refetching
-final booksProvider = FutureProvider<List<Book>>((ref) async {
+/// Raw neighborhood pool: requestable books in the geohash cells covering the
+/// user's search radius. Distance filtering happens client-side on top.
+final nearbyPoolProvider = FutureProvider<List<Book>>((ref) async {
+  final profile = ref.watch(currentProfileProvider);
   final params = ref.watch(bookSearchParamsProvider);
 
-  var books = await FirebaseService.getBooks(
+  final lat = profile?.centroidLat;
+  final lng = profile?.centroidLng;
+  if (lat == null || lng == null) return const [];
+
+  final precision = Geohash.precisionForRadiusKm(params.radius);
+  final centerCell = Geohash.encode(lat, lng, precision: precision);
+  final cells = Geohash.neighborsOf(centerCell);
+
+  return FirebaseService.getBooksByGeohashCells(cells);
+});
+
+/// Books search results: distance-filtered, own books excluded, nearest first.
+final booksProvider = FutureProvider<List<Book>>((ref) async {
+  final profile = ref.watch(currentProfileProvider);
+  final params = ref.watch(bookSearchParamsProvider);
+  final pool = await ref.watch(nearbyPoolProvider.future);
+
+  final lat = profile?.centroidLat;
+  final lng = profile?.centroidLng;
+  if (lat == null || lng == null) return const [];
+
+  return GeoSearch.nearby(
+    books: pool,
+    centerLat: lat,
+    centerLng: lng,
+    radiusKm: params.radius,
+    excludeOwnerId: profile?.id,
+    language: params.language,
     query: params.query,
-    genre: params.genre,
   );
+});
 
-  // Apply geographic filter if location is provided
-  if (params.hasLocation) {
-    books = books.where((book) {
-      if (book.locationLat == null || book.locationLng == null) return false;
+/// Count of books within the radius — the Home map teaser (mock #1a).
+final nearbyCountProvider = Provider<AsyncValue<int>>((ref) {
+  return ref.watch(booksProvider).whenData((books) => books.length);
+});
 
-      final distance = _calculateDistance(
-        params.lat!,
-        params.lng!,
-        book.locationLat!,
-        book.locationLng!,
-      );
+/// Language → count chips for the map view (mock #1b).
+final languageCountsProvider = Provider<AsyncValue<Map<String, int>>>((ref) {
+  final profile = ref.watch(currentProfileProvider);
+  final params = ref.watch(bookSearchParamsProvider);
 
-      return distance <= params.radius;
-    }).map((book) {
-      final distance = _calculateDistance(
-        params.lat!,
-        params.lng!,
-        book.locationLat!,
-        book.locationLng!,
-      );
-      return book.copyWith(distanceKm: distance);
-    }).toList();
+  return ref.watch(nearbyPoolProvider).whenData((pool) {
+    final lat = profile?.centroidLat;
+    final lng = profile?.centroidLng;
+    if (lat == null || lng == null) return const <String, int>{};
+    // Counts ignore the language filter itself (they ARE the filter).
+    final inRadius = GeoSearch.nearby(
+      books: pool,
+      centerLat: lat,
+      centerLng: lng,
+      radiusKm: params.radius,
+      excludeOwnerId: profile?.id,
+    );
+    return GeoSearch.languageCounts(inRadius);
+  });
+});
 
-    // Sort by distance
-    books.sort((a, b) => (a.distanceKm ?? 0).compareTo(b.distanceKm ?? 0));
-  }
+/// "New nearby" section (spec §7).
+final newNearbyProvider = Provider<AsyncValue<List<Book>>>((ref) {
+  return ref.watch(booksProvider).whenData(GeoSearch.newNearby);
+});
 
-  return books;
+/// "Most loved this month" section (spec §7, by request count).
+final mostLovedProvider = Provider<AsyncValue<List<Book>>>((ref) {
+  return ref.watch(booksProvider).whenData(GeoSearch.mostLoved);
 });
 
 /// Single book provider - keeps cache for faster navigation back
@@ -109,34 +126,6 @@ final myBooksProvider = FutureProvider<List<Book>>((ref) async {
 final userBooksProvider =
     FutureProvider.family<List<Book>, String>((ref, userId) async {
   return FirebaseService.getUserBooks(userId);
-});
-
-/// Book interest state provider
-final bookInterestProvider =
-    FutureProvider.autoDispose.family<bool, String>((ref, bookId) async {
-  // TODO: Implement book interest tracking in Firebase
-  return false;
-});
-
-/// Available genres
-final genresProvider = Provider<List<String>>((ref) {
-  return [
-    'All',
-    'Fiction',
-    'Sci-Fi',
-    'Memoir',
-    'Historical',
-    'Nature',
-    'Fantasy',
-    'Myth',
-    'Contemporary',
-    'Mystery',
-    'Romance',
-    'Thriller',
-    'Biography',
-    'Self-Help',
-    'Poetry',
-  ];
 });
 
 /// Book actions notifier
@@ -193,12 +182,6 @@ class BookActionsNotifier extends StateNotifier<AsyncValue<void>> {
       state = AsyncValue.error(e, st);
       return false;
     }
-  }
-
-  /// Toggle interest in a book
-  Future<bool> toggleInterest(String bookId) async {
-    // TODO: Implement in Firebase
-    return false;
   }
 }
 

@@ -8,7 +8,7 @@ class Env {
   static const String webUrl = 'https://turtle-turning-pages.web.app';
 
   // Default search radius in kilometers
-  static const double defaultSearchRadius = 5.0;
+  static const double defaultSearchRadius = 1.0;
   static const double minSearchRadius = 1.0;
   static const double maxSearchRadius = 100.0;
 
