@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../config/theme.dart';
-import '../../providers/providers.dart';
-import '../../widgets/widgets.dart';
 
+import '../../config/router.dart';
+import '../../config/theme.dart';
+import '../../models/models.dart';
+import '../../providers/providers.dart';
+import '../../widgets/book_cover.dart';
+import '../../widgets/status_chip.dart';
+
+/// My trades (mock #2c): active vs completed, one card per trade with the
+/// offer, status, expiry countdown, and the right actions for your role.
 class TradesScreen extends ConsumerWidget {
   const TradesScreen({super.key});
-
-  Future<void> _onRefresh(WidgetRef ref) async {
-    ref.invalidate(tradesProvider);
-    await Future.delayed(const Duration(milliseconds: 500));
-  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -19,329 +20,418 @@ class TradesScreen extends ConsumerWidget {
     final tradesAsync = ref.watch(tradesProvider);
     final currentUserId = ref.watch(currentUserProvider)?.uid;
 
+    ref.listen<AsyncValue<void>>(tradeActionsProvider, (previous, next) {
+      if (next.hasError && !next.isLoading) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:
+                Text(TradeActionsNotifier.describeError(next.error)),
+            backgroundColor: AppColors.terracotta,
+          ),
+        );
+      }
+    });
+
     return Scaffold(
-      backgroundColor: AppColors.paper,
+      backgroundColor: AppColors.bg,
+      appBar: AppBar(title: const Text('My trades')),
       body: SafeArea(
-        bottom: false,
-        child: RefreshIndicator(
-          onRefresh: () => _onRefresh(ref),
-          color: AppColors.rust,
-          child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
           children: [
-            // Header
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-              child: Text(
-                'Trades',
-                style: AppTypography.serifSemiBold.copyWith(
-                  fontSize: 32,
-                  letterSpacing: -0.4,
-                  color: AppColors.ink,
-                ),
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+              child: Row(
+                children: [
+                  _FilterTab(
+                    key: const Key('trades_active'),
+                    label: 'Active',
+                    selected: filter == TradeFilter.active,
+                    onTap: () => ref
+                        .read(tradeFilterProvider.notifier)
+                        .state = TradeFilter.active,
+                  ),
+                  const SizedBox(width: 8),
+                  _FilterTab(
+                    key: const Key('trades_done'),
+                    label: 'Completed',
+                    selected: filter == TradeFilter.done,
+                    onTap: () => ref
+                        .read(tradeFilterProvider.notifier)
+                        .state = TradeFilter.done,
+                  ),
+                ],
               ),
             ),
-
-            // Filter tabs
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-              child: Container(
-                padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(
-                  color: AppColors.paper3,
-                  borderRadius: BorderRadius.circular(11),
-                  border: Border.all(color: AppColors.line, width: 0.5),
+            Expanded(
+              child: tradesAsync.when(
+                loading: () =>
+                    const Center(child: CircularProgressIndicator()),
+                error: (e, _) => Center(
+                  child: Text(
+                    'Could not load trades. Pull to retry.',
+                    style: AppTypography.sansRegular
+                        .copyWith(color: AppColors.ink2),
+                  ),
                 ),
-                child: Row(
-                  children: TradeFilter.values.map((f) {
-                    final isSelected = f == filter;
-                    final label = f == TradeFilter.all
-                        ? 'All'
-                        : f == TradeFilter.incoming
-                            ? 'Incoming'
-                            : f == TradeFilter.outgoing
-                                ? 'Outgoing'
-                                : 'Done';
-                    return Expanded(
-                      child: GestureDetector(
-                        onTap: () => ref.read(tradeFilterProvider.notifier).state = f,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          decoration: BoxDecoration(
-                            color: isSelected ? AppColors.paper : Colors.transparent,
-                            borderRadius: BorderRadius.circular(8),
-                            boxShadow: isSelected
-                                ? [
-                                    BoxShadow(
-                                      color: AppColors.ink.withValues(alpha: 0.12),
-                                      blurRadius: 2,
-                                      offset: const Offset(0, 1),
-                                    ),
-                                  ]
-                                : null,
+                data: (trades) => trades.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 40),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.swap_horiz,
+                                  size: 44, color: AppColors.piriMoss),
+                              const SizedBox(height: 12),
+                              Text(
+                                filter == TradeFilter.active
+                                    ? 'No trades under way. Ask for a book you like — 50 pts, flat.'
+                                    : 'Completed trades will gather here.',
+                                textAlign: TextAlign.center,
+                                style: AppTypography.sansRegular.copyWith(
+                                  fontSize: 13.5,
+                                  color: AppColors.ink2,
+                                  height: 1.5,
+                                ),
+                              ),
+                            ],
                           ),
-                          child: Text(
-                            label,
-                            style: AppTypography.sansSemiBold.copyWith(
-                              fontSize: 13,
-                              color: isSelected ? AppColors.ink : AppColors.ink3,
-                            ),
-                            textAlign: TextAlign.center,
+                        ),
+                      )
+                    : RefreshIndicator(
+                        onRefresh: () async => ref.invalidate(tradesProvider),
+                        child: ListView.builder(
+                          padding: const EdgeInsets.all(20),
+                          itemCount: trades.length,
+                          itemBuilder: (context, index) => _TradeCard(
+                            trade: trades[index],
+                            currentUserId: currentUserId ?? '',
                           ),
                         ),
                       ),
-                    );
-                  }).toList(),
-                ),
-              ),
-            ),
-
-            // Trades list
-            Expanded(
-              child: tradesAsync.when(
-                data: (trades) => trades.isEmpty
-                    ? ListView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        children: [
-                          SizedBox(height: MediaQuery.of(context).size.height * 0.25),
-                          _buildEmptyState(filter),
-                        ],
-                      )
-                    : ListView.builder(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.fromLTRB(20, 6, 20, 120),
-                        itemCount: trades.length,
-                        itemBuilder: (context, index) {
-                          final trade = trades[index];
-                          return _TradeCard(
-                            trade: trade,
-                            currentUserId: currentUserId ?? '',
-                            onTap: () => context.push('/trade/${trade.id}'),
-                          );
-                        },
-                      ),
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, _) => Center(child: Text('Error: $error')),
               ),
             ),
           ],
         ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmptyState(TradeFilter filter) {
-    String message;
-    String subtitle;
-
-    switch (filter) {
-      case TradeFilter.incoming:
-        message = 'No incoming trades';
-        subtitle = 'Trade requests will appear here';
-      case TradeFilter.outgoing:
-        message = 'No outgoing trades';
-        subtitle = 'Find a book and make an offer!';
-      case TradeFilter.done:
-        message = 'No completed trades';
-        subtitle = 'Your finished trades will appear here';
-      case TradeFilter.all:
-        message = 'No trades yet';
-        subtitle = 'Start trading to see them here';
-    }
-
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.swap_horiz,
-            size: 48,
-            color: AppColors.ink3.withValues(alpha: 0.5),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            message,
-            style: AppTypography.serifSemiBold.copyWith(
-              fontSize: 18,
-              color: AppColors.ink2,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            subtitle,
-            style: AppTypography.sansRegular.copyWith(
-              fontSize: 13.5,
-              color: AppColors.ink3,
-            ),
-          ),
-        ],
       ),
     );
   }
 }
 
-class _TradeCard extends StatelessWidget {
-  final dynamic trade;
-  final String currentUserId;
+class _FilterTab extends StatelessWidget {
+  final String label;
+  final bool selected;
   final VoidCallback onTap;
 
-  const _TradeCard({
-    required this.trade,
-    required this.currentUserId,
+  const _FilterTab({
+    super.key,
+    required this.label,
+    required this.selected,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isIncoming = trade.recipientId == currentUserId;
-    final partner = trade.getPartner(currentUserId);
-    final theirBooks = trade.getTheirBooks(currentUserId);
-    final myBooks = trade.getMyBooks(currentUserId);
-
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
-          color: AppColors.paper2,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppColors.line, width: 0.5),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.ink.withValues(alpha: 0.04),
-              blurRadius: 3,
-              offset: const Offset(0, 1),
-            ),
-          ],
+          color: selected ? AppColors.greenTint : AppColors.surface,
+          border: Border.all(
+              color: selected ? AppColors.green : AppColors.line),
+          borderRadius: BorderRadius.circular(999),
         ),
-        child: Column(
-          children: [
-            // Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    UserAvatar(profile: partner, size: 30),
-                    const SizedBox(width: 9),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          partner?.displayName ?? 'Unknown',
-                          style: AppTypography.sansBold.copyWith(
-                            fontSize: 14,
-                            color: AppColors.ink,
-                          ),
-                        ),
-                        Text(
-                          isIncoming ? 'Wants to trade' : 'You proposed',
-                          style: AppTypography.sansRegular.copyWith(
-                            fontSize: 11.5,
-                            color: AppColors.ink3,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                StatusPill(status: trade.status),
-              ],
-            ),
-            const SizedBox(height: 14),
-            // Books preview
-            Row(
-              children: [
-                Expanded(
-                  child: _BookSlot(
-                    book: theirBooks.isNotEmpty ? theirBooks.first : null,
-                    label: 'They give',
-                  ),
-                ),
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: AppColors.paper3,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.line, width: 0.5),
-                  ),
-                  child: const Icon(Icons.swap_horiz, size: 18, color: AppColors.rust),
-                ),
-                Expanded(
-                  child: _BookSlot(
-                    book: myBooks.isNotEmpty ? myBooks.first : null,
-                    label: 'You give',
-                  ),
-                ),
-              ],
-            ),
-          ],
+        child: Text(
+          label,
+          style: AppTypography.sansBold.copyWith(
+            fontSize: 13,
+            color: selected ? AppColors.green : AppColors.ink2,
+          ),
         ),
       ),
     );
   }
 }
 
-class _BookSlot extends StatelessWidget {
-  final dynamic book;
-  final String label;
+class _TradeCard extends ConsumerWidget {
+  final Trade trade;
+  final String currentUserId;
 
-  const _BookSlot({required this.book, required this.label});
+  const _TradeCard({required this.trade, required this.currentUserId});
+
+  bool get _isOwner => trade.ownerId == currentUserId;
+
+  String? _expiryLabel() {
+    if (trade.status != TradeStatus.requested) return null;
+    final expiresAt = trade.requestedAt.add(Trade.expiryWindow);
+    final left = expiresAt.difference(DateTime.now());
+    if (left.isNegative) return 'expiring';
+    if (left.inDays >= 1) return 'expires in ${left.inDays}d';
+    return 'expires in ${left.inHours}h';
+  }
+
+  Future<bool> _confirm(
+      BuildContext context, String title, String body) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.bg,
+        title: Text(title,
+            style:
+                AppTypography.sansExtraBold.copyWith(color: AppColors.ink)),
+        content: Text(body,
+            style: AppTypography.sansRegular
+                .copyWith(color: AppColors.ink2, height: 1.4)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep it'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Yes, cancel',
+                style: AppTypography.sansBold
+                    .copyWith(color: AppColors.terracotta)),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
 
   @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        if (book != null)
-          BookCover(
-            imageUrl: book.coverImgUrl,
-            title: book.title,
-            author: book.author,
-            coverColorKey: book.coverColorKey,
-            width: 38,
-            borderRadius: 3,
-          )
-        else
-          Container(
-            width: 38,
-            height: 57,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(3),
-              border: Border.all(color: AppColors.line, style: BorderStyle.solid),
-            ),
-            child: const Icon(Icons.add, size: 16, color: AppColors.ink3),
-          ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context, WidgetRef ref) {
+    final book = trade.book;
+    final partner = trade.getPartner(currentUserId);
+    final expiry = _expiryLabel();
+    final actions = ref.read(tradeActionsProvider.notifier);
+
+    final iConfirmed = trade.hasConfirmedSwap(currentUserId);
+    final waitingOnOther =
+        trade.status == TradeStatus.accepted && iConfirmed;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border.all(color: AppColors.line),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Text(
-                label.toUpperCase(),
-                style: AppTypography.sansSemiBold.copyWith(
-                  fontSize: 10.5,
-                  letterSpacing: 0.5,
-                  color: AppColors.ink3,
+              if (book != null)
+                SizedBox(
+                  width: 38,
+                  height: 54,
+                  child: FittedBox(
+                    fit: BoxFit.cover,
+                    clipBehavior: Clip.hardEdge,
+                    child: SizedBox(
+                      width: 68,
+                      height: 98,
+                      child: BookCover(
+                        title: book.title,
+                        author: book.author,
+                        coverColorKey: book.coverColorKey,
+                        showShadow: false,
+                      ),
+                    ),
+                  ),
+                ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      book?.title ?? 'Book',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.sansExtraBold.copyWith(
+                        fontSize: 14.5,
+                        color: AppColors.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      [
+                        _isOwner
+                            ? '${partner?.displayName ?? 'A neighbor'} asked'
+                            : 'You asked ${partner?.displayName ?? 'the owner'}',
+                        trade.offer == TradeOffer.points50
+                            ? '${Trade.pointsPrice} pts'
+                            : 'book for book',
+                      ].join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.sansRegular.copyWith(
+                        fontSize: 12,
+                        color: AppColors.ink2,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 1),
-              Text(
-                book?.title ?? 'To be chosen',
-                style: AppTypography.serifSemiBold.copyWith(
-                  fontSize: 13.5,
-                  color: AppColors.ink,
-                  height: 1.15,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  StatusChip(status: trade.status.value),
+                  if (expiry != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      expiry,
+                      style: AppTypography.sansSemiBold.copyWith(
+                        fontSize: 10,
+                        color: AppColors.ink3,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ],
           ),
-        ),
-      ],
+          if (trade.offer == TradeOffer.points50 &&
+              trade.status == TradeStatus.requested &&
+              !_isOwner) ...[
+            const SizedBox(height: 8),
+            Text(
+              'You sent ${Trade.pointsPrice} pts — returned if cancelled',
+              style: AppTypography.sansRegular.copyWith(
+                fontSize: 11,
+                color: AppColors.ink3,
+              ),
+            ),
+          ],
+          if (waitingOnOther) ...[
+            const SizedBox(height: 8),
+            Text(
+              key: const Key('waiting_confirm'),
+              'Waiting for ${partner?.displayName.split(' ').first ?? 'them'} to confirm the swap',
+              style: AppTypography.sansSemiBold.copyWith(
+                fontSize: 12,
+                color: AppColors.honeyDeep,
+              ),
+            ),
+          ],
+          if (!trade.status.isTerminal) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                if (_isOwner && trade.status == TradeStatus.requested) ...[
+                  Expanded(
+                    child: ElevatedButton(
+                      key: Key('accept_${trade.id}'),
+                      onPressed: () async {
+                        await actions.acceptTrade(trade.id);
+                        ref.invalidate(tradesProvider);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                      child: const Text('Accept'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton(
+                      key: Key('decline_${trade.id}'),
+                      onPressed: () async {
+                        await actions.rejectTrade(trade.id);
+                        ref.invalidate(tradesProvider);
+                      },
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                      child: const Text('Decline'),
+                    ),
+                  ),
+                ],
+                if (trade.status == TradeStatus.accepted && !iConfirmed) ...[
+                  Expanded(
+                    child: ElevatedButton(
+                      key: Key('swap_${trade.id}'),
+                      onPressed: () async {
+                        final result = await actions.confirmSwap(trade.id);
+                        ref.invalidate(tradesProvider);
+                        if (result != null &&
+                            result.completed &&
+                            context.mounted) {
+                          context.push(
+                              AppRoutes.rateSwap.replaceFirst(':id', trade.id));
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                      child: const Text('Mark as swapped'),
+                    ),
+                  ),
+                ],
+                if (trade.status == TradeStatus.accepted ||
+                    (!_isOwner && trade.status == TradeStatus.requested)) ...[
+                  if (trade.status == TradeStatus.accepted)
+                    const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton(
+                      key: Key('cancel_${trade.id}'),
+                      onPressed: () async {
+                        final sure = await _confirm(
+                          context,
+                          'Cancel this trade?',
+                          trade.escrowed
+                              ? 'The held ${Trade.pointsPrice} pts go straight back.'
+                              : 'Both books go back on their shelves.',
+                        );
+                        if (!sure) return;
+                        await actions.cancelTrade(trade.id);
+                        ref.invalidate(tradesProvider);
+                      },
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        foregroundColor: AppColors.terracotta,
+                      ),
+                      child: Text(trade.status == TradeStatus.requested
+                          ? 'Cancel request'
+                          : 'Cancel'),
+                    ),
+                  ),
+                ],
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  key: Key('chat_${trade.id}'),
+                  onPressed: () => context.push(
+                      AppRoutes.tradeChat.replaceFirst(':id', trade.id)),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 10, horizontal: 14),
+                  ),
+                  child: const Icon(Icons.chat_bubble_outline, size: 16),
+                ),
+              ],
+            ),
+          ],
+          if (trade.status == TradeStatus.swapped) ...[
+            const SizedBox(height: 10),
+            GestureDetector(
+              key: Key('rate_${trade.id}'),
+              onTap: () => context
+                  .push(AppRoutes.rateSwap.replaceFirst(':id', trade.id)),
+              child: Text(
+                'Rate the swap',
+                style: AppTypography.sansBold.copyWith(
+                  fontSize: 12.5,
+                  color: AppColors.green,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

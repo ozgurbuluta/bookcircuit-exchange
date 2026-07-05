@@ -32,7 +32,8 @@ class AppRoutes {
   static const String scanReview = '/scan-review';
   static const String editBook = '/edit-book/:id';
   static const String editProfile = '/edit-profile';
-  static const String proposeSwap = '/propose-swap/:bookId';
+  static const String tradeChat = '/trade-chat/:id';
+  static const String rateSwap = '/rate/:id';
 }
 
 /// Router provider
@@ -210,10 +211,17 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const EditProfileScreen(),
       ),
       GoRoute(
-        path: AppRoutes.proposeSwap,
+        path: AppRoutes.tradeChat,
         builder: (context, state) {
-          final bookId = state.pathParameters['bookId']!;
-          return ProposeSwapScreen(bookId: bookId);
+          final tradeId = state.pathParameters['id']!;
+          return TradeChatScreen(tradeId: tradeId);
+        },
+      ),
+      GoRoute(
+        path: AppRoutes.rateSwap,
+        builder: (context, state) {
+          final tradeId = state.pathParameters['id']!;
+          return RateSwapScreen(tradeId: tradeId);
         },
       ),
     ],

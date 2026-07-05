@@ -12,7 +12,9 @@ import '../../config/theme.dart';
 import '../../config/router.dart';
 import '../../config/env.dart';
 import '../../models/book.dart';
+import '../../models/models.dart';
 import '../../providers/providers.dart';
+import '../trades/trade_request_sheet.dart';
 import '../../widgets/widgets.dart';
 
 class BookDetailScreen extends ConsumerStatefulWidget {
@@ -166,63 +168,24 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
   }
 
   Future<void> _requestBook(Book book) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.paper,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: Text(
-          'Request this book?',
-          style: AppTypography.serifSemiBold.copyWith(
-            fontSize: 20,
-            color: AppColors.ink,
-          ),
-        ),
-        content: Text(
-          'This will send a request to ${book.owner?.displayName ?? 'the owner'} to start a trade.',
-          style: AppTypography.sansRegular.copyWith(
-            fontSize: 14,
-            color: AppColors.ink2,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(
-              'Cancel',
-              style: AppTypography.sansSemiBold.copyWith(color: AppColors.ink2),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Send Request'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true && mounted) {
-      final messenger = ScaffoldMessenger.of(context);
-      final router = GoRouter.of(context);
-
-      // Create trade request
-      final trade = await ref.read(tradeActionsProvider.notifier).createTrade(
-        ownerId: book.ownerId,
-        bookId: book.id,
+    if (!book.isRequestable) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This book is in a trade right now.')),
       );
-
-      if (trade != null) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(
-              'Request sent to ${book.owner?.displayName ?? 'owner'}',
-              style: AppTypography.sansRegular.copyWith(color: Colors.white),
-            ),
-            backgroundColor: AppColors.sage,
+      return;
+    }
+    final trade = await showTradeRequestSheet(context, book);
+    if (trade != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Request sent to ${book.owner?.displayName ?? 'the owner'} — they have 7 days',
+            style: AppTypography.sansRegular.copyWith(color: Colors.white),
           ),
-        );
-        router.go(AppRoutes.trades);
-      }
+          backgroundColor: AppColors.green,
+        ),
+      );
+      ref.invalidate(bookProvider(widget.bookId));
     }
   }
 
@@ -559,31 +522,13 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                     color: AppColors.paper.withValues(alpha: 0.9),
                     border: const Border(top: BorderSide(color: AppColors.line, width: 0.5)),
                   ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: AppButton(
-                          onPressed: () => context.push('/propose-swap/${widget.bookId}'),
-                          isOutlined: true,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.swap_horiz, size: 19),
-                              const SizedBox(width: 7),
-                              const Text('Offer a swap'),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        flex: 2,
-                        child: AppButton(
-                          onPressed: () => _requestBook(book),
-                          child: const Text('Request book'),
-                        ),
-                      ),
-                    ],
+                  child: AppButton(
+                    key: const Key('trade_cta'),
+                    onPressed:
+                        book.isRequestable ? () => _requestBook(book) : null,
+                    child: Text(book.isRequestable
+                        ? 'Trade for ${Trade.pointsPrice} pts'
+                        : 'In trade'),
                   ),
                 ),
             ],

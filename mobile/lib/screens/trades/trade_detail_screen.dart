@@ -227,13 +227,18 @@ class TradeDetailScreen extends ConsumerWidget {
                     case 'complete':
                       final confirmed = await _confirmAction(
                         context,
-                        'Complete',
-                        'Mark this trade as completed? Make sure the exchange happened.',
+                        'Mark as swapped',
+                        'Both of you confirm — the trade completes when the other side taps too.',
                       );
                       if (!confirmed) return;
-                      success = await notifier.completeTrade(tradeId);
+                      final result = await notifier.confirmSwap(tradeId);
+                      success = result != null;
                       if (success && context.mounted) {
-                        _showSuccessSnackbar(context, 'Trade completed!');
+                        _showSuccessSnackbar(
+                            context,
+                            result!.completed
+                                ? 'Swapped — enjoy the read'
+                                : 'Marked — waiting for the other side');
                       }
                       break;
                     case 'message':

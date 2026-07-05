@@ -1,50 +1,38 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/models.dart';
 import '../services/firebase_service.dart';
+import '../services/trade_engine.dart';
 import 'auth_provider.dart';
 
-/// Trade filter enum
-enum TradeFilter {
-  all,
-  incoming,
-  outgoing,
-  done;
+/// The one gateway to the points economy (docs/REDESIGN_PLAN.md, D1).
+final tradeEngineProvider =
+    Provider<TradeEngine>((ref) => TradeEngine(FirebaseService.db));
 
-  String? get statusFilter {
-    switch (this) {
-      case TradeFilter.all:
-      // 'incoming'/'outgoing' are not trade statuses; these are resolved with
-      // client-side requester/owner filtering instead (see tradesProvider).
-      case TradeFilter.incoming:
-      case TradeFilter.outgoing:
-        return null;
-      case TradeFilter.done:
-        return 'swapped';
-    }
-  }
-}
+/// Trade filter (mock #2c): active vs completed.
+enum TradeFilter { active, done }
 
-/// Current trade filter provider
-final tradeFilterProvider = StateProvider<TradeFilter>((ref) => TradeFilter.all);
+final tradeFilterProvider =
+    StateProvider<TradeFilter>((ref) => TradeFilter.active);
 
 /// Trades list provider
 final tradesProvider = FutureProvider.autoDispose<List<Trade>>((ref) async {
   final filter = ref.watch(tradeFilterProvider);
-  final currentUser = FirebaseService.currentUser;
+  final trades = await FirebaseService.getUserTrades();
 
-  var trades = await FirebaseService.getUserTrades(
-    statusFilter: filter.statusFilter,
-  );
-
-  // Apply additional client-side filtering for incoming/outgoing
-  if (filter == TradeFilter.incoming && currentUser != null) {
-    trades = trades.where((t) => t.ownerId == currentUser.uid).toList();
-  } else if (filter == TradeFilter.outgoing && currentUser != null) {
-    trades = trades.where((t) => t.requesterId == currentUser.uid).toList();
+  // Opportunistic client-side expiry (backstop to the scheduled function).
+  final engine = ref.read(tradeEngineProvider);
+  for (final trade in trades) {
+    if (trade.isExpiredAt(DateTime.now())) {
+      await engine.expireIfStale(trade.id);
+    }
   }
 
-  return trades;
+  switch (filter) {
+    case TradeFilter.active:
+      return trades.where((t) => !t.status.isTerminal).toList();
+    case TradeFilter.done:
+      return trades.where((t) => t.status.isTerminal).toList();
+  }
 });
 
 /// Single trade provider
@@ -53,96 +41,116 @@ final tradeProvider =
   return FirebaseService.getTrade(tradeId);
 });
 
-/// Pending incoming trades count (for badge)
+/// Pending incoming trades count (for badges)
 final pendingTradesCountProvider = FutureProvider.autoDispose<int>((ref) async {
   final userId = ref.watch(currentUserProvider)?.uid;
   if (userId == null) return 0;
 
   final trades = await FirebaseService.getUserTrades();
   return trades
-      .where((t) =>
-          t.ownerId == userId && t.status == TradeStatus.requested)
+      .where((t) => t.ownerId == userId && t.status == TradeStatus.requested)
       .length;
 });
 
-/// Trade actions notifier.
-///
-/// NOTE: interim implementation — Phase H replaces these plain status writes
-/// with the TradeEngine (escrow, refunds, auto-decline, two-sided swap
-/// confirmation, book locking) per docs/REDESIGN_PLAN.md §3.
+/// Trade actions — thin UI adapter over the TradeEngine. Surfaces engine
+/// errors as user-facing messages in [state].
 class TradeActionsNotifier extends StateNotifier<AsyncValue<void>> {
-  TradeActionsNotifier() : super(const AsyncValue.data(null));
+  final TradeEngine _engine;
+  final String? Function() _currentUserId;
 
-  /// Create a trade request for one book (spec §4).
-  Future<Trade?> createTrade({
-    required String ownerId,
-    required String bookId,
-    TradeOffer offer = TradeOffer.points50,
-    String? offeredBookId,
-    String? note,
-  }) async {
+  TradeActionsNotifier(this._engine, this._currentUserId)
+      : super(const AsyncValue.data(null));
+
+  Future<T?> _run<T>(Future<T> Function() action) async {
     state = const AsyncValue.loading();
     try {
-      final currentUser = FirebaseService.currentUser;
-      if (currentUser == null) throw Exception('Not authenticated');
-
-      final tradeRef = FirebaseService.db.collection('trades').doc();
-      await tradeRef.set({
-        'bookId': bookId,
-        'requesterId': currentUser.uid,
-        'ownerId': ownerId,
-        'offer': offer.value,
-        'offeredBookId': offeredBookId,
-        'note': note,
-        'status': TradeStatus.requested.value,
-        'escrowed': false,
-        'swapConfirmedBy': <String>[],
-        'requestedAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      final trade = await FirebaseService.getTrade(tradeRef.id);
+      final result = await action();
       state = const AsyncValue.data(null);
-      return trade;
+      return result;
+    } on TradeEngineException catch (e, st) {
+      state = AsyncValue.error(e, st);
+      return null;
     } catch (e, st) {
       state = AsyncValue.error(e, st);
       return null;
     }
   }
 
-  Future<bool> _setStatus(String tradeId, TradeStatus status) async {
-    state = const AsyncValue.loading();
-    try {
-      await FirebaseService.updateTradeStatus(
-        tradeId: tradeId,
-        newStatus: status.value,
-      );
-      state = const AsyncValue.data(null);
-      return true;
-    } catch (e, st) {
-      state = AsyncValue.error(e, st);
-      return false;
+  /// Human copy for engine errors (spec §10 tone).
+  static String describeError(Object? error) {
+    if (error is TradeEngineException) {
+      switch (error.code) {
+        case TradeErrorCode.insufficientPoints:
+          return 'Not enough points. Shelve a book to earn points.';
+        case TradeErrorCode.duplicateRequest:
+          return 'You already asked for this book.';
+        case TradeErrorCode.bookNotRequestable:
+          return 'This book just left the shelf.';
+        case TradeErrorCode.invalidOfferedBook:
+          return 'That book of yours is not available to offer.';
+        case TradeErrorCode.ownBook:
+          return 'This one is already yours.';
+        case TradeErrorCode.alreadyConfirmed:
+          return 'You already marked this as swapped.';
+        case TradeErrorCode.notAllowed:
+        case TradeErrorCode.invalidStatus:
+        case TradeErrorCode.notFound:
+          return 'This trade changed — pull to refresh.';
+      }
     }
+    return 'Something went wrong. Try again.';
   }
 
-  /// Accept a trade
-  Future<bool> acceptTrade(String tradeId) =>
-      _setStatus(tradeId, TradeStatus.accepted);
+  Future<Trade?> createRequest({
+    required String bookId,
+    required TradeOffer offer,
+    String? offeredBookId,
+    String? note,
+  }) {
+    final uid = _currentUserId();
+    if (uid == null) return Future.value(null);
+    return _run(() => _engine.createRequest(
+          requesterId: uid,
+          bookId: bookId,
+          offer: offer,
+          offeredBookId: offeredBookId,
+          note: note,
+        ));
+  }
 
-  /// Decline a trade
-  Future<bool> rejectTrade(String tradeId) =>
-      _setStatus(tradeId, TradeStatus.declined);
+  Future<bool> acceptTrade(String tradeId) async {
+    final uid = _currentUserId();
+    if (uid == null) return false;
+    await _run(() => _engine.accept(tradeId: tradeId, actorId: uid));
+    return state is AsyncData;
+  }
 
-  /// Cancel a trade
-  Future<bool> cancelTrade(String tradeId) =>
-      _setStatus(tradeId, TradeStatus.cancelled);
+  Future<bool> rejectTrade(String tradeId) async {
+    final uid = _currentUserId();
+    if (uid == null) return false;
+    await _run(() => _engine.decline(tradeId: tradeId, actorId: uid));
+    return state is AsyncData;
+  }
 
-  /// Complete a trade (interim: Phase H replaces with two-sided confirm)
-  Future<bool> completeTrade(String tradeId) =>
-      _setStatus(tradeId, TradeStatus.swapped);
+  Future<bool> cancelTrade(String tradeId) async {
+    final uid = _currentUserId();
+    if (uid == null) return false;
+    await _run(() => _engine.cancel(tradeId: tradeId, actorId: uid));
+    return state is AsyncData;
+  }
+
+  /// D7: returns true when the trade fully completed (second confirmation).
+  Future<SwapConfirmation?> confirmSwap(String tradeId) {
+    final uid = _currentUserId();
+    if (uid == null) return Future.value(null);
+    return _run(() => _engine.confirmSwap(tradeId: tradeId, actorId: uid));
+  }
 }
 
 final tradeActionsProvider =
     StateNotifierProvider<TradeActionsNotifier, AsyncValue<void>>((ref) {
-  return TradeActionsNotifier();
+  return TradeActionsNotifier(
+    ref.watch(tradeEngineProvider),
+    () => ref.read(currentUserProvider)?.uid,
+  );
 });
