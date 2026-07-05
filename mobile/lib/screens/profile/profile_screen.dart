@@ -315,7 +315,7 @@ class ProfileScreen extends ConsumerWidget {
                     onTap: () async {
                       await ref.read(authProvider.notifier).signOut();
                       if (context.mounted) {
-                        context.go(AppRoutes.signIn);
+                        context.go(AppRoutes.welcome);
                       }
                     },
                     child: Text(

@@ -49,7 +49,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   Future<void> _completeOnboarding() async {
     await ref.read(onboardingNotifierProvider.notifier).completeOnboarding();
     if (mounted) {
-      context.go(AppRoutes.signIn);
+      context.go(AppRoutes.welcome);
     }
   }
 

@@ -44,58 +44,9 @@ class FirebaseService {
   /// Check if user is logged in
   static bool get isLoggedIn => currentUser != null;
 
-  /// Sign up with email and password
-  static Future<UserCredential> signUp({
-    required String email,
-    required String password,
-    String? fullName,
-  }) async {
-    final credential = await auth.createUserWithEmailAndPassword(
-      email: email,
-      password: password,
-    );
-
-    // Create user profile in Firestore
-    if (credential.user != null) {
-      await db.collection('users').doc(credential.user!.uid).set({
-        'id': credential.user!.uid,
-        'email': email,
-        'fullName': fullName ?? '',
-        'name': fullName ?? '',
-        'avatarUrl': '',
-        'languages': <String>[],
-        'points': 0,
-        'pointsGranted': false,
-        'ratingAvg': 0,
-        'ratingCount': 0,
-        'tradeCount': 0,
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    }
-
-    return credential;
-  }
-
-  /// Sign in with email and password
-  static Future<UserCredential> signIn({
-    required String email,
-    required String password,
-  }) async {
-    return await auth.signInWithEmailAndPassword(
-      email: email,
-      password: password,
-    );
-  }
-
   /// Sign out
   static Future<void> signOut() async {
     await auth.signOut();
-  }
-
-  /// Send password reset email
-  static Future<void> resetPassword(String email) async {
-    await auth.sendPasswordResetEmail(email: email);
   }
 
   /// Listen to auth state changes

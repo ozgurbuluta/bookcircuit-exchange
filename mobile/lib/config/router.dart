@@ -11,8 +11,8 @@ import 'theme.dart';
 class AppRoutes {
   static const String splash = '/';
   static const String onboarding = '/onboarding';
-  static const String signIn = '/sign-in';
-  static const String signUp = '/sign-up';
+  static const String welcome = '/welcome';
+  static const String emailSignIn = '/email-sign-in';
   static const String home = '/home';
   static const String discover = '/discover';
   static const String trades = '/trades';
@@ -41,8 +41,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isAuthenticated = authState.isAuthenticated;
       final currentPath = state.matchedLocation;
 
-      final isOnAuthPage = currentPath == AppRoutes.signIn ||
-                           currentPath == AppRoutes.signUp;
+      final isOnAuthPage = currentPath == AppRoutes.welcome ||
+                           currentPath == AppRoutes.emailSignIn;
       final isOnSplash = currentPath == AppRoutes.splash;
 
       // Show splash while loading
@@ -58,9 +58,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         return null;
       }
 
-      // Not authenticated - go to sign in
+      // Not authenticated - go to the welcome screen
       if (!isOnAuthPage) {
-        return AppRoutes.signIn;
+        return AppRoutes.welcome;
       }
 
       return null;
@@ -75,12 +75,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const OnboardingScreen(),
       ),
       GoRoute(
-        path: AppRoutes.signIn,
-        builder: (context, state) => const SignInScreen(),
+        path: AppRoutes.welcome,
+        builder: (context, state) => const WelcomeScreen(),
       ),
       GoRoute(
-        path: AppRoutes.signUp,
-        builder: (context, state) => const SignUpScreen(),
+        path: AppRoutes.emailSignIn,
+        builder: (context, state) => const EmailSignInScreen(),
       ),
       ShellRoute(
         builder: (context, state, child) => MainShell(child: child),
@@ -187,8 +187,8 @@ final routerProvider = Provider<GoRouter>((ref) {
             Text('Page not found: ${state.matchedLocation}'),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: () => context.go(AppRoutes.signIn),
-              child: const Text('Go to Sign In'),
+              onPressed: () => context.go(AppRoutes.welcome),
+              child: const Text('Back to start'),
             ),
           ],
         ),
