@@ -1,8 +1,16 @@
 rules_version = '2';
 
+// Turtle Turning Pages v1 — security rules for the redesigned schema
+// (docs/REDESIGN_PLAN.md §3). Economy architecture is decision D1 "hybrid":
+// trade transitions run as client-side transactions behind the app's
+// TradeEngine, so these rules constrain WHICH fields non-owners may touch;
+// they cannot verify cross-document invariants (points conservation). That
+// residual trust gap is accepted for the closed TestFlight and closes when
+// transitions move into callable functions before public launch.
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ---- Helper functions ----
+    // ---- Helpers ----
     function isAuthenticated() {
       return request.auth != null;
     }
@@ -15,102 +23,158 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.token.admin == true;
     }
 
-    // True when the signed-in user is a participant of the given conversation.
-    // Safe to call at read time and when adding messages/participants AFTER the
-    // parent conversation document already exists.
-    function isConvoParticipant(conversationId) {
-      return isAuthenticated() &&
-        request.auth.uid in
-          get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds;
+    function affectedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
     }
 
-    // True when the signed-in user is the initiator or recipient of the trade.
+    // True when the signed-in user is the requester or owner of the trade.
     function isTradeParticipant(tradeId) {
       let trade = get(/databases/$(database)/documents/trades/$(tradeId)).data;
       return isAuthenticated() &&
-        (trade.initiatorId == request.auth.uid || trade.recipientId == request.auth.uid);
+        (trade.requesterId == request.auth.uid || trade.ownerId == request.auth.uid);
     }
 
     // ---- Users ----
     match /users/{userId} {
-      // Require authentication to read profiles (prevents anonymous email harvesting).
+      // Authenticated-only reads (prevents anonymous email harvesting).
       allow read: if isAuthenticated();
-      allow create, update, delete: if isOwner(userId);
+
+      // A user may create their own doc, but never pre-loaded with points:
+      // the welcome grant is a separate guarded transition below.
+      allow create: if isOwner(userId) &&
+        request.resource.data.points == 0 &&
+        request.resource.data.pointsGranted == false;
+
+      allow update: if isOwner(userId) ?
+          (
+            // Profile edits: identity/settings fields only…
+            affectedKeys().hasOnly([
+              'fullName', 'name', 'avatarInitials', 'avatarUrl',
+              'postalCode', 'areaLabel', 'languages',
+              'notifyNewBookNearby', 'notifyJournal', 'fcmToken', 'updatedAt'
+            ])
+            ||
+            // …or the one-time 200-pt welcome grant (spec §4.2).
+            (
+              affectedKeys().hasOnly(['points', 'pointsGranted', 'updatedAt']) &&
+              resource.data.pointsGranted == false &&
+              request.resource.data.pointsGranted == true &&
+              request.resource.data.points == resource.data.points + 200
+            )
+          )
+        : (
+            // TradeEngine counterparty writes: escrow/refund/release and
+            // denormalized counters only — never identity fields.
+            isAuthenticated() &&
+            affectedKeys().hasOnly([
+              'points', 'tradeCount', 'ratingAvg', 'ratingCount', 'updatedAt'
+            ])
+          );
+
+      allow delete: if isOwner(userId);
     }
 
     // ---- Books ----
     match /books/{bookId} {
       // Listings are publicly browsable.
       allow read: if true;
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isOwner(resource.data.userId);
-    }
 
-    // ---- Book interests ----
-    match /bookInterests/{interestId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isOwner(resource.data.userId);
-    }
-
-    // ---- Book requests ----
-    match /bookRequests/{requestId} {
-      allow read: if isAuthenticated() &&
-        (resource.data.requesterId == request.auth.uid ||
-         resource.data.ownerId == request.auth.uid);
       allow create: if isAuthenticated() &&
-        request.resource.data.requesterId == request.auth.uid;
-      // Only requester or owner may update (e.g. cancel / accept / reject).
-      allow update: if isAuthenticated() &&
-        (resource.data.requesterId == request.auth.uid ||
-         resource.data.ownerId == request.auth.uid);
-      allow delete: if false;
+        request.resource.data.ownerId == request.auth.uid &&
+        request.resource.data.status == 'on_shelf' &&
+        request.resource.data.condition in ['like_new', 'very_good', 'good', 'well_read'] &&
+        request.resource.data.source in ['scan', 'manual'];
+
+      // Owner edits freely; trade counterparties may only lock/unlock,
+      // bump the request counter, or receive ownership at swap.
+      allow update: if isOwner(resource.data.ownerId) ||
+        (
+          isAuthenticated() &&
+          affectedKeys().hasOnly(['status', 'requestCount', 'ownerId', 'updatedAt'])
+        );
+
+      allow delete: if isOwner(resource.data.ownerId);
     }
 
-    // ---- Notifications ----
-    match /notifications/{notificationId} {
-      allow read: if isOwner(resource.data.userId);
-      // Any authenticated user may create a notification addressed to another
-      // user (e.g. a book request notifies the owner).
-      allow create: if isAuthenticated();
-      // The recipient may update (mark read) or remove their own notifications.
-      allow update, delete: if isOwner(resource.data.userId);
-    }
-
-    // ---- Trades ----
+    // ---- Trades (single-book, spec §4) ----
     match /trades/{tradeId} {
       allow read: if isAuthenticated() &&
-        (resource.data.initiatorId == request.auth.uid ||
-         resource.data.recipientId == request.auth.uid);
-      allow create: if isAuthenticated() &&
-        request.resource.data.initiatorId == request.auth.uid;
-      allow update: if isAuthenticated() &&
-        (resource.data.initiatorId == request.auth.uid ||
-         resource.data.recipientId == request.auth.uid);
-      allow delete: if false; // Never delete trades, only update status.
+        (resource.data.requesterId == request.auth.uid ||
+         resource.data.ownerId == request.auth.uid);
 
-      // Trade items subcollection
-      match /tradeItems/{itemId} {
-        // Read requires participation in the parent trade (which exists by read time).
+      allow create: if isAuthenticated() &&
+        request.resource.data.requesterId == request.auth.uid &&
+        request.resource.data.ownerId != request.auth.uid &&
+        request.resource.data.status == 'requested' &&
+        request.resource.data.offer in ['points_50', 'book'] &&
+        (request.resource.data.offer != 'book' ||
+         request.resource.data.offeredBookId is string);
+
+      // Participants transition trades; terminal trades are frozen.
+      allow update: if isAuthenticated() &&
+        (resource.data.requesterId == request.auth.uid ||
+         resource.data.ownerId == request.auth.uid) &&
+        !(resource.data.status in ['swapped', 'cancelled', 'declined', 'expired']) &&
+        // Immutable identity of a trade.
+        request.resource.data.bookId == resource.data.bookId &&
+        request.resource.data.requesterId == resource.data.requesterId &&
+        request.resource.data.ownerId == resource.data.ownerId;
+
+      allow delete: if false; // Never delete trades, only close them.
+
+      // Per-trade chat thread (spec §9) — user + system messages.
+      match /messages/{messageId} {
         allow read: if isTradeParticipant(tradeId);
-        // Items are created in the same batch as the trade, so the parent does
-        // not yet exist; validate the creator is a participant via the item fields.
-        allow create: if isAuthenticated() &&
-          (request.resource.data.ownerId == request.auth.uid ||
-           request.resource.data.recipientId == request.auth.uid);
+        allow create: if isTradeParticipant(tradeId) &&
+          request.resource.data.senderId == request.auth.uid &&
+          request.resource.data.type in ['user', 'system'];
         allow update, delete: if false;
       }
     }
 
-    // ---- Trade history (audit trail) ----
-    match /tradeHistory/{historyId} {
-      allow read: if isTradeParticipant(resource.data.tradeId);
+    // ---- Ratings (spec §3, one per direction per trade) ----
+    match /ratings/{ratingId} {
+      allow read: if isAuthenticated();
+
+      // Doc ID convention "{tradeId}_{fromId}" enforces one rating per
+      // direction; only participants of a swapped trade may rate.
       allow create: if isAuthenticated() &&
-        request.resource.data.actorId == request.auth.uid;
+        request.resource.data.fromId == request.auth.uid &&
+        ratingId == request.resource.data.tradeId + '_' + request.auth.uid &&
+        request.resource.data.stars >= 1 &&
+        request.resource.data.stars <= 5 &&
+        (!('note' in request.resource.data) ||
+         request.resource.data.note == null ||
+         request.resource.data.note.size() <= 140) &&
+        isTradeParticipant(request.resource.data.tradeId) &&
+        get(/databases/$(database)/documents/trades/$(request.resource.data.tradeId)).data.status == 'swapped';
+
       allow update, delete: if false;
     }
 
-    // ---- Conversations ----
+    // ---- Notifications (spec §8) ----
+    match /notifications/{notificationId} {
+      allow read: if isOwner(resource.data.userId);
+      // Any authenticated user may notify another (e.g. a request notifies
+      // the owner) — but only with a well-formed payload.
+      allow create: if isAuthenticated() &&
+        request.resource.data.keys().hasAll(['userId', 'type', 'refId', 'read']) &&
+        request.resource.data.read == false;
+      // The recipient may mark read or remove their own notifications.
+      allow update: if isOwner(resource.data.userId) &&
+        affectedKeys().hasOnly(['read']);
+      allow delete: if isOwner(resource.data.userId);
+    }
+
+    // ---- Journal (reuses blogPosts: public read, admin write) ----
+    match /blogPosts/{postId} {
+      allow read: if true;
+      // Writes require an admin custom claim:
+      //   admin.auth().setCustomUserClaims(uid, { admin: true })
+      allow write: if isAdmin();
+    }
+
+    // ---- LEGACY: pre-redesign chat, kept read/write until Phase I ----
     match /conversations/{conversationId} {
       allow read: if isAuthenticated() && request.auth.uid in resource.data.participantIds;
       allow create: if isAuthenticated() &&
@@ -118,27 +182,33 @@ service cloud.firestore {
       allow update: if isAuthenticated() && request.auth.uid in resource.data.participantIds;
       allow delete: if false;
 
-      // Participants subcollection (created/updated after the conversation exists)
       match /participants/{participantId} {
-        allow read, write: if isConvoParticipant(conversationId);
+        allow read, write: if isAuthenticated() &&
+          request.auth.uid in
+            get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds;
       }
 
-      // Messages subcollection
       match /messages/{messageId} {
-        allow read: if isConvoParticipant(conversationId);
-        allow create: if isConvoParticipant(conversationId) &&
+        allow read: if isAuthenticated() &&
+          request.auth.uid in
+            get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds;
+        allow create: if isAuthenticated() &&
+          request.auth.uid in
+            get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds &&
           request.resource.data.userId == request.auth.uid;
-        allow update: if isOwner(resource.data.userId);
-        allow delete: if false;
+        allow update, delete: if false;
       }
     }
 
-    // ---- Blog posts (public read, admin write) ----
-    match /blogPosts/{postId} {
-      allow read: if true;
-      // Writes require an admin custom claim:
-      //   admin.auth().setCustomUserClaims(uid, { admin: true })
-      allow write: if isAdmin();
+    // ---- RETIRED collections (locked; deleted in the Phase L reset) ----
+    match /bookInterests/{id} {
+      allow read, write: if false;
+    }
+    match /bookRequests/{id} {
+      allow read, write: if false;
+    }
+    match /tradeHistory/{id} {
+      allow read, write: if false;
     }
   }
 }

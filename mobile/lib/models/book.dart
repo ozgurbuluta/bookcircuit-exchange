@@ -110,6 +110,9 @@ class Book {
   final double? locationLat;
   final double? locationLng;
 
+  /// Geohash of the postal centroid — enables server-side radius queries.
+  final String? geohash;
+
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -149,6 +152,7 @@ class Book {
     this.postalCode,
     this.locationLat,
     this.locationLng,
+    this.geohash,
     required this.createdAt,
     required this.updatedAt,
     this.owner,
@@ -200,6 +204,7 @@ class Book {
       postalCode: data['postalCode'] as String?,
       locationLat: (data['locationLat'] as num?)?.toDouble(),
       locationLng: (data['locationLng'] as num?)?.toDouble(),
+      geohash: data['geohash'] as String?,
       createdAt: dateFromFirestore(data['createdAt']) ?? DateTime.now(),
       updatedAt: dateFromFirestore(data['updatedAt']) ?? DateTime.now(),
     );
@@ -223,6 +228,7 @@ class Book {
       'postalCode': postalCode,
       'locationLat': locationLat,
       'locationLng': locationLng,
+      'geohash': geohash,
       'createdAt': createdAt,
       'updatedAt': updatedAt,
     };
@@ -246,6 +252,7 @@ class Book {
     String? postalCode,
     double? locationLat,
     double? locationLng,
+    String? geohash,
     DateTime? createdAt,
     DateTime? updatedAt,
     Profile? owner,
@@ -269,6 +276,7 @@ class Book {
       postalCode: postalCode ?? this.postalCode,
       locationLat: locationLat ?? this.locationLat,
       locationLng: locationLng ?? this.locationLng,
+      geohash: geohash ?? this.geohash,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       owner: owner ?? this.owner,
