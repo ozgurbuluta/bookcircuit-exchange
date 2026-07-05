@@ -71,6 +71,7 @@ flutter:
 
   assets:
     - assets/images/
+    - assets/fonts/
 
-  # Note: Fonts are loaded via google_fonts package from the network
-  # No local font assets needed
+  # Spec fonts (Young Serif + Schibsted Grotesk) are bundled locally so the
+  # google_fonts package resolves them from assets — no network fetching.

@@ -3,12 +3,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'config/theme.dart';
 import 'config/router.dart';
 import 'config/firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Spec fonts are bundled in assets/fonts/ — never fetch over the network.
+  GoogleFonts.config.allowRuntimeFetching = false;
 
   // Set preferred orientations
   await SystemChrome.setPreferredOrientations([

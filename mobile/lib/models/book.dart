@@ -106,7 +106,7 @@ class Book {
 
   /// Get a cover color key based on title hash
   String get coverColorKey {
-    final colors = ['oxblood', 'olive', 'dusty', 'ochre', 'plum', 'terra', 'forest', 'slate', 'sand', 'ink'];
+    const colors = ['honey', 'plum', 'slate', 'deepGreen', 'forest', 'terracotta', 'brick'];
     final hash = title.hashCode.abs();
     return colors[hash % colors.length];
   }
