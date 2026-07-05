@@ -207,9 +207,8 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
 
       // Create trade request
       final trade = await ref.read(tradeActionsProvider.notifier).createTrade(
-        partnerId: book.userId,
-        myBookIds: [],
-        theirBookIds: [book.id],
+        ownerId: book.ownerId,
+        bookId: book.id,
       );
 
       if (trade != null) {
@@ -526,7 +525,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                       ),
 
                     // Interest count
-                    if (book.interestCount != null && book.interestCount! > 0)
+                    if (book.requestCount > 0)
                       SliverToBoxAdapter(
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(40, 26, 40, 0),
@@ -536,7 +535,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                               const Icon(Icons.favorite_outline, size: 14, color: AppColors.ink3),
                               const SizedBox(width: 6),
                               Text(
-                                '${book.interestCount} readers interested',
+                                '${book.requestCount} readers interested',
                                 style: AppTypography.sansRegular.copyWith(
                                   fontSize: 12.5,
                                   color: AppColors.ink3,

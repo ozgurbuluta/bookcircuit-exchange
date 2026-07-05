@@ -1,33 +1,94 @@
+import 'firestore_helpers.dart';
 import 'book.dart';
 import 'profile.dart';
 
-/// Conversation participant model
-class ConversationParticipant {
-  final String userId;
-  final String conversationId;
-  final DateTime createdAt;
-  final Profile? user;
+/// Message type (spec §3): user text or system event (escrowed, accepted,
+/// cancelled, swapped — rendered as honey pills, mock #2d).
+enum MessageType {
+  user('user'),
+  system('system');
 
-  ConversationParticipant({
-    required this.userId,
-    required this.conversationId,
+  final String value;
+  const MessageType(this.value);
+
+  static MessageType fromString(String? raw) =>
+      raw == 'system' ? MessageType.system : MessageType.user;
+}
+
+/// Chat message (spec §3). In v1 threads exist only per trade (plus club
+/// groups reserved for v2), so a message points at [tradeId] or [clubId].
+class Message {
+  final String id;
+  final String? tradeId;
+  final String? clubId;
+  final String senderId;
+  final String text;
+  final MessageType type;
+  final DateTime createdAt;
+
+  /// Hydrated sender profile (not serialized).
+  final Profile? sender;
+
+  // -------------------------------------------------------------------------
+  // Legacy fields — old conversation-based chat, removed in Phase I.
+  // -------------------------------------------------------------------------
+  @Deprecated('Messages live under trades in v1')
+  final String? conversationId;
+  @Deprecated('Removed by the v1 redesign')
+  final String? relatedBookId;
+
+  Message({
+    required this.id,
+    this.tradeId,
+    this.clubId,
+    required this.senderId,
+    required this.text,
+    this.type = MessageType.user,
     required this.createdAt,
-    this.user,
+    this.sender,
+    @Deprecated('Messages live under trades in v1') this.conversationId,
+    @Deprecated('Removed by the v1 redesign') this.relatedBookId,
   });
 
-  factory ConversationParticipant.fromJson(Map<String, dynamic> json) {
-    return ConversationParticipant(
-      userId: json['user_id'] as String,
-      conversationId: json['conversation_id'] as String,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      user: json['user'] != null
-          ? Profile.fromJson(json['user'] as Map<String, dynamic>)
-          : null,
+  @Deprecated('Use senderId')
+  String get userId => senderId;
+
+  @Deprecated('Use text')
+  String get content => text;
+
+  @Deprecated('Use sender')
+  Profile? get user => sender;
+
+  bool get isSystem => type == MessageType.system;
+
+  bool isFromUser(String currentUserId) => senderId == currentUserId;
+
+  factory Message.fromFirestore(Map<String, dynamic> data, String id) {
+    return Message(
+      id: id,
+      tradeId: data['tradeId'] as String?,
+      clubId: data['clubId'] as String?,
+      senderId: data['senderId'] as String? ?? data['userId'] as String? ?? '',
+      text: data['text'] as String? ?? data['content'] as String? ?? '',
+      type: MessageType.fromString(data['type'] as String?),
+      createdAt: dateFromFirestore(data['createdAt']) ?? DateTime.now(),
     );
+  }
+
+  Map<String, dynamic> toFirestore() {
+    return {
+      if (tradeId != null) 'tradeId': tradeId,
+      if (clubId != null) 'clubId': clubId,
+      'senderId': senderId,
+      'text': text,
+      'type': type.value,
+      'createdAt': createdAt,
+    };
   }
 }
 
-/// Conversation model
+/// Legacy conversation model — replaced by per-trade threads in Phase I.
+@Deprecated('Chat threads exist only per trade in v1 (spec §9)')
 class Conversation {
   final String id;
   final DateTime createdAt;
@@ -36,7 +97,6 @@ class Conversation {
   final DateTime? lastMessageAt;
   final String? lastMessageSenderId;
   final int unreadCount;
-  final List<ConversationParticipant> participants;
   final Profile? otherUser;
   final String? bookId;
   final Book? book;
@@ -49,115 +109,10 @@ class Conversation {
     this.lastMessageAt,
     this.lastMessageSenderId,
     this.unreadCount = 0,
-    this.participants = const [],
     this.otherUser,
     this.bookId,
     this.book,
   });
 
-  /// Check if this conversation has unread messages
   bool get hasUnread => unreadCount > 0;
-
-  factory Conversation.fromJson(Map<String, dynamic> json) {
-    return Conversation(
-      id: json['id'] as String,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      updatedAt: DateTime.parse(json['updated_at'] as String),
-      lastMessage: json['last_message'] as String?,
-      lastMessageAt: json['last_message_at'] != null
-          ? DateTime.parse(json['last_message_at'] as String)
-          : null,
-      lastMessageSenderId: json['last_message_sender_id'] as String?,
-      unreadCount: json['unread_count'] as int? ?? 0,
-      participants: (json['participants'] as List<dynamic>?)
-              ?.map((e) =>
-                  ConversationParticipant.fromJson(e as Map<String, dynamic>))
-              .toList() ??
-          [],
-      otherUser: json['other_user'] != null
-          ? Profile.fromJson(json['other_user'] as Map<String, dynamic>)
-          : null,
-      bookId: json['book_id'] as String?,
-      book: json['book'] != null
-          ? Book.fromJson(json['book'] as Map<String, dynamic>)
-          : null,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'created_at': createdAt.toIso8601String(),
-      'updated_at': updatedAt.toIso8601String(),
-      'last_message': lastMessage,
-      'last_message_at': lastMessageAt?.toIso8601String(),
-      'last_message_sender_id': lastMessageSenderId,
-      'unread_count': unreadCount,
-      'book_id': bookId,
-    };
-  }
-}
-
-/// Message model
-class Message {
-  final String id;
-  final String conversationId;
-  final String userId;
-  final String content;
-  final DateTime createdAt;
-  final DateTime? updatedAt;
-  final bool isEdited;
-  final Profile? user;
-  final String? relatedBookId;
-  final Book? relatedBook;
-
-  Message({
-    required this.id,
-    required this.conversationId,
-    required this.userId,
-    required this.content,
-    required this.createdAt,
-    this.updatedAt,
-    this.isEdited = false,
-    this.user,
-    this.relatedBookId,
-    this.relatedBook,
-  });
-
-  /// Check if this message is from the current user
-  bool isFromUser(String currentUserId) => userId == currentUserId;
-
-  factory Message.fromJson(Map<String, dynamic> json) {
-    return Message(
-      id: json['id'] as String,
-      conversationId: json['conversation_id'] as String,
-      userId: json['user_id'] as String,
-      content: json['content'] as String,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      updatedAt: json['updated_at'] != null
-          ? DateTime.parse(json['updated_at'] as String)
-          : null,
-      isEdited: json['is_edited'] as bool? ?? false,
-      user: json['user'] != null
-          ? Profile.fromJson(json['user'] as Map<String, dynamic>)
-          : null,
-      relatedBookId: json['related_book_id'] as String?,
-      relatedBook: json['related_book'] != null
-          ? Book.fromJson(json['related_book'] as Map<String, dynamic>)
-          : null,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'conversation_id': conversationId,
-      'user_id': userId,
-      'content': content,
-      'created_at': createdAt.toIso8601String(),
-      'updated_at': updatedAt?.toIso8601String(),
-      'is_edited': isEdited,
-      'related_book_id': relatedBookId,
-    };
-  }
 }

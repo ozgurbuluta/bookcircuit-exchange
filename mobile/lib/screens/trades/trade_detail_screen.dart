@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../config/theme.dart';
+import '../../models/models.dart';
 import '../../providers/providers.dart';
 import '../../widgets/widgets.dart';
 
@@ -350,7 +351,7 @@ class _TradeActions extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (isIncoming && (trade.status.value == 'pending' || trade.status.value == 'request_pending')) ...[
+          if (isIncoming && trade.status == TradeStatus.requested) ...[
             Row(
               children: [
                 Expanded(
@@ -378,7 +379,7 @@ class _TradeActions extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10),
-          ] else if (!isIncoming && (trade.status.value == 'pending' || trade.status.value == 'request_pending')) ...[
+          ] else if (!isIncoming && trade.status == TradeStatus.requested) ...[
             Row(
               children: [
                 Expanded(

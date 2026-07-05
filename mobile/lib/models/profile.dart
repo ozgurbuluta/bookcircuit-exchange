@@ -1,133 +1,200 @@
-/// User profile model
+import 'firestore_helpers.dart';
+
+/// User profile (spec §3 "User").
+///
+/// Neighbors only ever see [areaLabel] — GPS is never stored (spec §5).
 class Profile {
   final String id;
+  final String? email;
   final String? fullName;
   final String? avatarUrl;
-  final String? email;
-  final String? locationCity;
-  final String? locationState;
-  final String? locationCountry;
-  final double? locationLat;
-  final double? locationLng;
-  final String? bio;
-  final String? website;
-  final String? university;
+
+  /// Postal code captured during neighborhood setup (#3e).
+  final String? postalCode;
+
+  /// Human label geocoded once from [postalCode], e.g. "Moda, Kadıköy".
+  final String? areaLabel;
+
+  /// Languages the user reads (≥1 required by onboarding).
+  final List<String> languages;
+
+  /// Points balance. New accounts are granted 200 exactly once (spec §4.2).
+  final int points;
+
+  /// Guards the one-time welcome grant across repeated social sign-ins.
+  final bool pointsGranted;
+
+  final double ratingAvg;
+  final int ratingCount;
+  final int tradeCount;
+
+  /// Opt-in notification prefs (spec §8) — default off.
+  final bool notifyNewBookNearby;
+  final bool notifyJournal;
+
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
+  // -------------------------------------------------------------------------
+  // Legacy fields — kept so pre-redesign screens compile until Phase L.
+  // -------------------------------------------------------------------------
+  @Deprecated('Removed by the v1 redesign')
+  final String? bio;
+  @Deprecated('Removed by the v1 redesign')
+  final String? website;
+  @Deprecated('Removed by the v1 redesign')
+  final String? university;
+  @Deprecated('Use areaLabel')
+  final String? locationCity;
+  @Deprecated('Use areaLabel')
+  final String? locationState;
+  @Deprecated('Use areaLabel')
+  final String? locationCountry;
+  @Deprecated('GPS is never stored (spec §5)')
+  final double? locationLat;
+  @Deprecated('GPS is never stored (spec §5)')
+  final double? locationLng;
+
   Profile({
     required this.id,
+    this.email,
     this.fullName,
     this.avatarUrl,
-    this.email,
-    this.locationCity,
-    this.locationState,
-    this.locationCountry,
-    this.locationLat,
-    this.locationLng,
-    this.bio,
-    this.website,
-    this.university,
+    this.postalCode,
+    this.areaLabel,
+    this.languages = const [],
+    this.points = 0,
+    this.pointsGranted = false,
+    this.ratingAvg = 0,
+    this.ratingCount = 0,
+    this.tradeCount = 0,
+    this.notifyNewBookNearby = false,
+    this.notifyJournal = false,
     this.createdAt,
     this.updatedAt,
+    @Deprecated('Removed by the v1 redesign') this.bio,
+    @Deprecated('Removed by the v1 redesign') this.website,
+    @Deprecated('Removed by the v1 redesign') this.university,
+    @Deprecated('Use areaLabel') this.locationCity,
+    @Deprecated('Use areaLabel') this.locationState,
+    @Deprecated('Use areaLabel') this.locationCountry,
+    @Deprecated('GPS is never stored (spec §5)') this.locationLat,
+    @Deprecated('GPS is never stored (spec §5)') this.locationLng,
   });
 
-  /// Get display name (full name or fallback to email)
-  String get displayName => fullName ?? email?.split('@').first ?? 'User';
+  /// Display name (full name or email prefix fallback).
+  String get displayName => fullName?.isNotEmpty == true
+      ? fullName!
+      : email?.split('@').first ?? 'User';
 
-  /// Get initials for avatar
-  String get initials {
-    if (fullName != null && fullName!.isNotEmpty) {
-      final parts = fullName!.split(' ');
-      if (parts.length >= 2) {
-        return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
-      }
-      return fullName![0].toUpperCase();
+  /// Initials for avatars, stored denormalized as spec `avatarInitials`.
+  String get avatarInitials {
+    final name = fullName?.trim() ?? '';
+    if (name.isEmpty) return 'U';
+    final parts = name.split(RegExp(r'\s+'));
+    if (parts.length >= 2) {
+      return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
     }
-    return 'U';
+    return name[0].toUpperCase();
   }
 
-  /// Get formatted location string
-  String? get formattedLocation {
-    final parts = [locationCity, locationState, locationCountry]
-        .where((p) => p != null && p.isNotEmpty)
-        .toList();
-    return parts.isNotEmpty ? parts.join(', ') : null;
-  }
+  /// Legacy alias for [avatarInitials].
+  String get initials => avatarInitials;
 
-  factory Profile.fromJson(Map<String, dynamic> json) {
+  /// Onboarding gate (#3e): postal code + at least one language.
+  bool get hasCompletedSetup =>
+      (postalCode?.isNotEmpty ?? false) && languages.isNotEmpty;
+
+  @Deprecated('Use areaLabel')
+  String? get formattedLocation => areaLabel;
+
+  factory Profile.fromFirestore(Map<String, dynamic> data, String id) {
     return Profile(
-      id: json['id'] as String,
-      fullName: json['full_name'] as String?,
-      avatarUrl: json['avatar_url'] as String?,
-      email: json['email'] as String?,
-      locationCity: json['location_city'] as String?,
-      locationState: json['location_state'] as String?,
-      locationCountry: json['location_country'] as String?,
-      locationLat: (json['location_lat'] as num?)?.toDouble(),
-      locationLng: (json['location_lng'] as num?)?.toDouble(),
-      bio: json['bio'] as String?,
-      website: json['website'] as String?,
-      university: json['university'] as String?,
-      createdAt: json['created_at'] != null
-          ? DateTime.parse(json['created_at'] as String)
-          : null,
-      updatedAt: json['updated_at'] != null
-          ? DateTime.parse(json['updated_at'] as String)
-          : null,
+      id: id,
+      email: data['email'] as String?,
+      fullName: data['fullName'] as String? ?? data['name'] as String?,
+      avatarUrl: data['avatarUrl'] as String?,
+      postalCode: data['postalCode'] as String?,
+      areaLabel: data['areaLabel'] as String?,
+      languages:
+          (data['languages'] as List<dynamic>?)?.cast<String>() ?? const [],
+      points: (data['points'] as num?)?.toInt() ?? 0,
+      pointsGranted: data['pointsGranted'] as bool? ?? false,
+      ratingAvg: (data['ratingAvg'] as num?)?.toDouble() ?? 0,
+      ratingCount: (data['ratingCount'] as num?)?.toInt() ?? 0,
+      tradeCount: (data['tradeCount'] as num?)?.toInt() ?? 0,
+      notifyNewBookNearby: data['notifyNewBookNearby'] as bool? ?? false,
+      notifyJournal: data['notifyJournal'] as bool? ?? false,
+      createdAt: dateFromFirestore(data['createdAt']),
+      updatedAt: dateFromFirestore(data['updatedAt']),
     );
   }
 
-  Map<String, dynamic> toJson() {
+  /// Serialization for the `users` collection. Intentionally excludes GPS and
+  /// all removed legacy fields (spec §5, plan §3).
+  Map<String, dynamic> toFirestore() {
     return {
-      'id': id,
-      'full_name': fullName,
-      'avatar_url': avatarUrl,
       'email': email,
-      'location_city': locationCity,
-      'location_state': locationState,
-      'location_country': locationCountry,
-      'location_lat': locationLat,
-      'location_lng': locationLng,
-      'bio': bio,
-      'website': website,
-      'university': university,
-      'created_at': createdAt?.toIso8601String(),
-      'updated_at': updatedAt?.toIso8601String(),
+      'fullName': fullName,
+      'name': fullName,
+      'avatarInitials': avatarInitials,
+      'avatarUrl': avatarUrl,
+      'postalCode': postalCode,
+      'areaLabel': areaLabel,
+      'languages': languages,
+      'points': points,
+      'pointsGranted': pointsGranted,
+      'ratingAvg': ratingAvg,
+      'ratingCount': ratingCount,
+      'tradeCount': tradeCount,
+      'notifyNewBookNearby': notifyNewBookNearby,
+      'notifyJournal': notifyJournal,
+      'createdAt': createdAt,
+      'updatedAt': updatedAt,
     };
   }
 
   Profile copyWith({
     String? id,
+    String? email,
     String? fullName,
     String? avatarUrl,
-    String? email,
-    String? locationCity,
-    String? locationState,
-    String? locationCountry,
-    double? locationLat,
-    double? locationLng,
-    String? bio,
-    String? website,
-    String? university,
+    String? postalCode,
+    String? areaLabel,
+    List<String>? languages,
+    int? points,
+    bool? pointsGranted,
+    double? ratingAvg,
+    int? ratingCount,
+    int? tradeCount,
+    bool? notifyNewBookNearby,
+    bool? notifyJournal,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
     return Profile(
       id: id ?? this.id,
+      email: email ?? this.email,
       fullName: fullName ?? this.fullName,
       avatarUrl: avatarUrl ?? this.avatarUrl,
-      email: email ?? this.email,
-      locationCity: locationCity ?? this.locationCity,
-      locationState: locationState ?? this.locationState,
-      locationCountry: locationCountry ?? this.locationCountry,
-      locationLat: locationLat ?? this.locationLat,
-      locationLng: locationLng ?? this.locationLng,
-      bio: bio ?? this.bio,
-      website: website ?? this.website,
-      university: university ?? this.university,
+      postalCode: postalCode ?? this.postalCode,
+      areaLabel: areaLabel ?? this.areaLabel,
+      languages: languages ?? this.languages,
+      points: points ?? this.points,
+      pointsGranted: pointsGranted ?? this.pointsGranted,
+      ratingAvg: ratingAvg ?? this.ratingAvg,
+      ratingCount: ratingCount ?? this.ratingCount,
+      tradeCount: tradeCount ?? this.tradeCount,
+      notifyNewBookNearby: notifyNewBookNearby ?? this.notifyNewBookNearby,
+      notifyJournal: notifyJournal ?? this.notifyJournal,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
+  }
+
+  /// Legacy JSON support for any remaining old call sites.
+  @Deprecated('Use Profile.fromFirestore')
+  factory Profile.fromJson(Map<String, dynamic> json) {
+    return Profile.fromFirestore(json, json['id'] as String? ?? '');
   }
 }

@@ -136,8 +136,6 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
 
     final updated = currentProfile.copyWith(
       fullName: _nameController.text.trim(),
-      bio: _bioController.text.trim(),
-      website: _websiteController.text.trim(),
       avatarUrl: avatarUrl,
     );
 

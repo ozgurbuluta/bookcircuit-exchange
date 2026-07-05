@@ -1,233 +1,286 @@
+import 'firestore_helpers.dart';
 import 'profile.dart';
 
-/// Book condition enum
+/// Book condition — the 4 spec values (spec §3).
 enum BookCondition {
-  newBook('New'),
-  likeNew('Like New'),
-  veryGood('Very Good'),
-  good('Good'),
-  acceptable('Acceptable'),
-  poor('Poor');
+  likeNew('like_new', 'Like new'),
+  veryGood('very_good', 'Very good'),
+  good('good', 'Good'),
+  wellRead('well_read', 'Well read');
 
+  final String value;
   final String displayName;
-  const BookCondition(this.displayName);
+  const BookCondition(this.value, this.displayName);
 
-  static BookCondition fromString(String value) {
-    return BookCondition.values.firstWhere(
-      (c) => c.displayName.toLowerCase() == value.toLowerCase(),
-      orElse: () => BookCondition.good,
-    );
+  /// Parses spec values plus the legacy 6-value display names
+  /// (plan §3 migration table). Unknown values fall back to [good].
+  static BookCondition fromString(String? raw) {
+    if (raw == null) return BookCondition.good;
+    for (final c in BookCondition.values) {
+      if (c.value == raw || c.displayName == raw) return c;
+    }
+    switch (raw) {
+      case 'New':
+      case 'newBook':
+      case 'Like New':
+      case 'likeNew':
+        return BookCondition.likeNew;
+      case 'Very Good':
+      case 'veryGood':
+        return BookCondition.veryGood;
+      case 'Acceptable':
+      case 'acceptable':
+        return BookCondition.good;
+      case 'Poor':
+      case 'poor':
+        return BookCondition.wellRead;
+      default:
+        return BookCondition.good;
+    }
   }
 }
 
-/// Book status enum
+/// Book status — the 3 spec values (spec §3).
 enum BookStatus {
-  available,
-  requested,
-  trading,
-  completed;
+  onShelf('on_shelf'),
+  inTrade('in_trade'),
+  tradedAway('traded_away');
 
-  static BookStatus fromString(String value) {
-    return BookStatus.values.firstWhere(
-      (s) => s.name == value,
-      orElse: () => BookStatus.available,
-    );
+  final String value;
+  const BookStatus(this.value);
+
+  static BookStatus fromString(String? raw) {
+    if (raw == null) return BookStatus.onShelf;
+    for (final s in BookStatus.values) {
+      if (s.value == raw || s.name == raw) return s;
+    }
+    // Legacy statuses
+    switch (raw) {
+      case 'available':
+        return BookStatus.onShelf;
+      case 'requested':
+      case 'trading':
+        return BookStatus.inTrade;
+      case 'completed':
+        return BookStatus.tradedAway;
+      default:
+        return BookStatus.onShelf;
+    }
   }
 }
 
-/// Book model
+/// How the book entered the shelf (spec §3).
+enum BookSource {
+  scan('scan'),
+  manual('manual');
+
+  final String value;
+  const BookSource(this.value);
+
+  static BookSource fromString(String? raw) =>
+      raw == 'scan' ? BookSource.scan : BookSource.manual;
+}
+
+/// Book model (spec §3).
+///
+/// Covers are generated placeholders in v1 — [coverColorKey] picks the
+/// colorway; [coverImgUrl] is reserved for v2 photos.
 class Book {
   final String id;
-  final String userId;
+  final String ownerId;
   final String title;
   final String author;
-  final String? description;
-  final BookCondition condition;
-  final String? isbn;
-  final String? coverImgUrl;
-  final String? publisher;
-  final int? publicationYear;
-  final String? language;
+  final int? year;
   final int? pages;
-  final List<String>? genres;
-  final String? locationText;
+  final String? publisher;
+  final String? isbn;
+  final String? language;
+  final BookCondition condition;
+
+  /// Owner can hide a book without removing it (spec §6).
+  final bool visible;
+  final BookStatus status;
+  final BookSource source;
+
+  /// Denormalized count of pending requests — feeds "Most loved this month".
+  final int requestCount;
+
+  /// Location derived from the owner's postal centroid (never GPS).
   final String? postalCode;
   final double? locationLat;
   final double? locationLng;
-  final BookStatus status;
-  final String? currentTradeId;
-  final int? tradeCount;
-  final int? interestCount;
-  final double? distanceKm;
-  final double? distanceMeters;
+
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  /// Hydrated owner profile (not serialized).
   final Profile? owner;
+
+  /// Search-time distance annotation (not serialized).
+  final double? distanceKm;
+
+  // -------------------------------------------------------------------------
+  // Legacy fields — kept so pre-redesign screens compile until Phase L.
+  // -------------------------------------------------------------------------
+  @Deprecated('Removed by the v1 redesign')
+  final String? description;
+  @Deprecated('Removed by the v1 redesign')
+  final List<String>? genres;
+  @Deprecated('Photos are v2 — covers are generated placeholders')
+  final String? coverImgUrl;
+  @Deprecated('Use areaLabel via owner')
+  final String? locationText;
 
   Book({
     required this.id,
-    required this.userId,
+    required this.ownerId,
     required this.title,
     required this.author,
-    this.description,
-    required this.condition,
-    this.isbn,
-    this.coverImgUrl,
-    this.publisher,
-    this.publicationYear,
-    this.language,
+    this.year,
     this.pages,
-    this.genres,
-    this.locationText,
+    this.publisher,
+    this.isbn,
+    this.language,
+    required this.condition,
+    this.visible = true,
+    this.status = BookStatus.onShelf,
+    this.source = BookSource.manual,
+    this.requestCount = 0,
     this.postalCode,
     this.locationLat,
     this.locationLng,
-    this.status = BookStatus.available,
-    this.currentTradeId,
-    this.tradeCount,
-    this.interestCount,
-    this.distanceKm,
-    this.distanceMeters,
     required this.createdAt,
     required this.updatedAt,
     this.owner,
+    this.distanceKm,
+    @Deprecated('Removed by the v1 redesign') this.description,
+    @Deprecated('Removed by the v1 redesign') this.genres,
+    @Deprecated('Photos are v2') this.coverImgUrl,
+    @Deprecated('Use areaLabel via owner') this.locationText,
   });
 
-  /// Get distance display string
-  String? get distanceDisplay {
-    if (distanceKm != null) {
-      return '${distanceKm!.toStringAsFixed(1)} km';
-    }
-    if (distanceMeters != null) {
-      return '${(distanceMeters! / 1000).toStringAsFixed(1)} km';
-    }
-    return null;
-  }
+  @Deprecated('Use ownerId')
+  String get userId => ownerId;
 
-  /// Get a cover color key based on title hash
+  /// A book can be requested only while visible and on the shelf (spec §4.6).
+  bool get isRequestable => visible && status == BookStatus.onShelf;
+
+  /// Stable placeholder-cover colorway from the 7-color palette.
   String get coverColorKey {
-    const colors = ['honey', 'plum', 'slate', 'deepGreen', 'forest', 'terracotta', 'brick'];
+    const colors = [
+      'honey', 'plum', 'slate', 'deepGreen', 'forest', 'terracotta', 'brick'
+    ];
     final hash = title.hashCode.abs();
     return colors[hash % colors.length];
   }
 
-  factory Book.fromJson(Map<String, dynamic> json) {
+  String? get distanceDisplay {
+    if (distanceKm == null) return null;
+    if (distanceKm! < 1) return '${(distanceKm! * 1000).round()} m';
+    return '${distanceKm!.toStringAsFixed(1)} km';
+  }
+
+  factory Book.fromFirestore(Map<String, dynamic> data, String id) {
     return Book(
-      id: json['id'] as String,
-      userId: json['user_id'] as String,
-      title: json['title'] as String,
-      author: json['author'] as String,
-      description: json['description'] as String?,
-      condition: BookCondition.fromString(json['condition'] as String? ?? 'Good'),
-      isbn: json['isbn'] as String?,
-      coverImgUrl: json['cover_img_url'] as String?,
-      publisher: json['publisher'] as String?,
-      publicationYear: json['publication_year'] as int?,
-      language: json['language'] as String?,
-      pages: json['pages'] as int?,
-      genres: (json['genres'] as List<dynamic>?)?.cast<String>(),
-      locationText: json['location_text'] as String?,
-      postalCode: json['postal_code'] as String?,
-      locationLat: (json['location_lat'] as num?)?.toDouble(),
-      locationLng: (json['location_lng'] as num?)?.toDouble(),
-      status: BookStatus.fromString(json['status'] as String? ?? 'available'),
-      currentTradeId: json['current_trade_id'] as String?,
-      tradeCount: json['trade_count'] as int?,
-      interestCount: json['interest_count'] as int?,
-      distanceKm: (json['distance_km'] as num?)?.toDouble(),
-      distanceMeters: (json['distance_meters'] as num?)?.toDouble() ??
-          (json['calculated_distance_meters'] as num?)?.toDouble(),
-      createdAt: DateTime.parse(json['created_at'] as String),
-      updatedAt: DateTime.parse(json['updated_at'] as String),
-      owner: json['owner'] != null
-          ? Profile.fromJson(json['owner'] as Map<String, dynamic>)
-          : null,
+      id: id,
+      ownerId: data['ownerId'] as String? ?? data['userId'] as String? ?? '',
+      title: data['title'] as String? ?? '',
+      author: data['author'] as String? ?? '',
+      year: (data['year'] as num?)?.toInt() ??
+          (data['publicationYear'] as num?)?.toInt(),
+      pages: (data['pages'] as num?)?.toInt(),
+      publisher: data['publisher'] as String?,
+      isbn: data['isbn'] as String?,
+      language: data['language'] as String?,
+      condition: BookCondition.fromString(data['condition'] as String?),
+      visible: data['visible'] as bool? ?? true,
+      status: BookStatus.fromString(data['status'] as String?),
+      source: BookSource.fromString(data['source'] as String?),
+      requestCount: (data['requestCount'] as num?)?.toInt() ?? 0,
+      postalCode: data['postalCode'] as String?,
+      locationLat: (data['locationLat'] as num?)?.toDouble(),
+      locationLng: (data['locationLng'] as num?)?.toDouble(),
+      createdAt: dateFromFirestore(data['createdAt']) ?? DateTime.now(),
+      updatedAt: dateFromFirestore(data['updatedAt']) ?? DateTime.now(),
     );
   }
 
-  Map<String, dynamic> toJson() {
+  Map<String, dynamic> toFirestore() {
     return {
-      'id': id,
-      'user_id': userId,
+      'ownerId': ownerId,
       'title': title,
       'author': author,
-      'description': description,
-      'condition': condition.displayName,
-      'isbn': isbn,
-      'cover_img_url': coverImgUrl,
-      'publisher': publisher,
-      'publication_year': publicationYear,
-      'language': language,
+      'year': year,
       'pages': pages,
-      'genres': genres,
-      'location_text': locationText,
-      'postal_code': postalCode,
-      'location_lat': locationLat,
-      'location_lng': locationLng,
-      'status': status.name,
-      'current_trade_id': currentTradeId,
-      'trade_count': tradeCount,
-      'interest_count': interestCount,
-      'created_at': createdAt.toIso8601String(),
-      'updated_at': updatedAt.toIso8601String(),
+      'publisher': publisher,
+      'isbn': isbn,
+      'language': language,
+      'condition': condition.value,
+      'visible': visible,
+      'status': status.value,
+      'source': source.value,
+      'requestCount': requestCount,
+      'postalCode': postalCode,
+      'locationLat': locationLat,
+      'locationLng': locationLng,
+      'createdAt': createdAt,
+      'updatedAt': updatedAt,
     };
   }
 
   Book copyWith({
     String? id,
-    String? userId,
+    String? ownerId,
     String? title,
     String? author,
-    String? description,
-    BookCondition? condition,
-    String? isbn,
-    String? coverImgUrl,
-    String? publisher,
-    int? publicationYear,
-    String? language,
+    int? year,
     int? pages,
-    List<String>? genres,
-    String? locationText,
+    String? publisher,
+    String? isbn,
+    String? language,
+    BookCondition? condition,
+    bool? visible,
+    BookStatus? status,
+    BookSource? source,
+    int? requestCount,
     String? postalCode,
     double? locationLat,
     double? locationLng,
-    BookStatus? status,
-    String? currentTradeId,
-    int? tradeCount,
-    int? interestCount,
-    double? distanceKm,
-    double? distanceMeters,
     DateTime? createdAt,
     DateTime? updatedAt,
     Profile? owner,
+    double? distanceKm,
   }) {
     return Book(
       id: id ?? this.id,
-      userId: userId ?? this.userId,
+      ownerId: ownerId ?? this.ownerId,
       title: title ?? this.title,
       author: author ?? this.author,
-      description: description ?? this.description,
-      condition: condition ?? this.condition,
-      isbn: isbn ?? this.isbn,
-      coverImgUrl: coverImgUrl ?? this.coverImgUrl,
-      publisher: publisher ?? this.publisher,
-      publicationYear: publicationYear ?? this.publicationYear,
-      language: language ?? this.language,
+      year: year ?? this.year,
       pages: pages ?? this.pages,
-      genres: genres ?? this.genres,
-      locationText: locationText ?? this.locationText,
+      publisher: publisher ?? this.publisher,
+      isbn: isbn ?? this.isbn,
+      language: language ?? this.language,
+      condition: condition ?? this.condition,
+      visible: visible ?? this.visible,
+      status: status ?? this.status,
+      source: source ?? this.source,
+      requestCount: requestCount ?? this.requestCount,
       postalCode: postalCode ?? this.postalCode,
       locationLat: locationLat ?? this.locationLat,
       locationLng: locationLng ?? this.locationLng,
-      status: status ?? this.status,
-      currentTradeId: currentTradeId ?? this.currentTradeId,
-      tradeCount: tradeCount ?? this.tradeCount,
-      interestCount: interestCount ?? this.interestCount,
-      distanceKm: distanceKm ?? this.distanceKm,
-      distanceMeters: distanceMeters ?? this.distanceMeters,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       owner: owner ?? this.owner,
+      distanceKm: distanceKm ?? this.distanceKm,
+      // ignore: deprecated_member_use_from_same_package
+      description: description,
+      // ignore: deprecated_member_use_from_same_package
+      genres: genres,
+      // ignore: deprecated_member_use_from_same_package
+      coverImgUrl: coverImgUrl,
+      // ignore: deprecated_member_use_from_same_package
+      locationText: locationText,
     );
   }
 }

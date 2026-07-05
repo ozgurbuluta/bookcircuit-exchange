@@ -152,7 +152,6 @@ class _EditBookScreenState extends ConsumerState<EditBookScreen> {
       title: _titleController.text.trim(),
       author: _authorController.text.trim(),
       language: _selectedLanguage,
-      locationText: locationText,
       locationLat: locationLat,
       locationLng: locationLng,
       condition: _condition,

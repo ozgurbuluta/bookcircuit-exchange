@@ -61,15 +61,14 @@ class FirebaseService {
         'id': credential.user!.uid,
         'email': email,
         'fullName': fullName ?? '',
+        'name': fullName ?? '',
         'avatarUrl': '',
-        'bio': '',
-        'website': '',
-        'university': '',
-        'locationCity': '',
-        'locationState': '',
-        'locationCountry': '',
-        'locationLat': null,
-        'locationLng': null,
+        'languages': <String>[],
+        'points': 0,
+        'pointsGranted': false,
+        'ratingAvg': 0,
+        'ratingCount': 0,
+        'tradeCount': 0,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -121,15 +120,14 @@ class FirebaseService {
   static Future<Profile?> updateProfile(Profile profile) async {
     await db.collection('users').doc(profile.id).update({
       'fullName': profile.fullName,
+      'name': profile.fullName,
+      'avatarInitials': profile.avatarInitials,
       'avatarUrl': profile.avatarUrl,
-      'bio': profile.bio,
-      'website': profile.website,
-      'university': profile.university,
-      'locationCity': profile.locationCity,
-      'locationState': profile.locationState,
-      'locationCountry': profile.locationCountry,
-      'locationLat': profile.locationLat,
-      'locationLng': profile.locationLng,
+      'postalCode': profile.postalCode,
+      'areaLabel': profile.areaLabel,
+      'languages': profile.languages,
+      'notifyNewBookNearby': profile.notifyNewBookNearby,
+      'notifyJournal': profile.notifyJournal,
       'updatedAt': FieldValue.serverTimestamp(),
     });
 
@@ -147,14 +145,15 @@ class FirebaseService {
   }) async {
     Query<Map<String, dynamic>> ref = db
         .collection('books')
-        .where('status', isEqualTo: 'available')
+        .where('status', isEqualTo: 'on_shelf')
+        .where('visible', isEqualTo: true)
         .orderBy('createdAt', descending: true)
         .limit(limit);
 
     if (userId != null) {
       ref = db
           .collection('books')
-          .where('userId', isEqualTo: userId)
+          .where('ownerId', isEqualTo: userId)
           .orderBy('createdAt', descending: true)
           .limit(limit);
     }
@@ -170,10 +169,6 @@ class FirebaseService {
           b.author.toLowerCase().contains(q)).toList();
     }
 
-    if (genre != null && genre != 'All') {
-      books = books.where((b) => b.genres?.contains(genre) ?? false).toList();
-    }
-
     return books;
   }
 
@@ -185,8 +180,8 @@ class FirebaseService {
     var book = _docToBook(doc);
 
     // Fetch owner profile
-    if (book.userId.isNotEmpty) {
-      final owner = await getProfile(book.userId);
+    if (book.ownerId.isNotEmpty) {
+      final owner = await getProfile(book.ownerId);
       book = book.copyWith(owner: owner);
     }
 
@@ -197,7 +192,7 @@ class FirebaseService {
   static Future<List<Book>> getUserBooks(String userId) async {
     final snapshot = await db
         .collection('books')
-        .where('userId', isEqualTo: userId)
+        .where('ownerId', isEqualTo: userId)
         .orderBy('createdAt', descending: true)
         .get();
 
@@ -212,30 +207,10 @@ class FirebaseService {
 
   /// Create book
   static Future<Book> createBook(Book book) async {
-    final docRef = await db.collection('books').add({
-      'userId': book.userId,
-      'title': book.title,
-      'author': book.author,
-      'description': book.description,
-      'condition': book.condition.name,
-      'isbn': book.isbn,
-      'coverImgUrl': book.coverImgUrl,
-      'publisher': book.publisher,
-      'publicationYear': book.publicationYear,
-      'language': book.language,
-      'pages': book.pages,
-      'genres': book.genres,
-      'locationText': book.locationText,
-      'postalCode': book.postalCode,
-      'locationLat': book.locationLat,
-      'locationLng': book.locationLng,
-      'status': book.status.name,
-      'tradeCount': 0,
-      'interestCount': 0,
-      'createdAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-
+    final data = book.toFirestore()
+      ..['createdAt'] = FieldValue.serverTimestamp()
+      ..['updatedAt'] = FieldValue.serverTimestamp();
+    final docRef = await db.collection('books').add(data);
     final newDoc = await docRef.get();
     return _docToBook(newDoc);
   }
@@ -250,29 +225,10 @@ class FirebaseService {
     final batch = db.batch();
     for (final book in books) {
       final docRef = db.collection('books').doc();
-      batch.set(docRef, {
-        'userId': book.userId,
-        'title': book.title,
-        'author': book.author,
-        'description': book.description,
-        'condition': book.condition.name,
-        'isbn': book.isbn,
-        'coverImgUrl': book.coverImgUrl,
-        'publisher': book.publisher,
-        'publicationYear': book.publicationYear,
-        'language': book.language,
-        'pages': book.pages,
-        'genres': book.genres,
-        'locationText': book.locationText,
-        'postalCode': book.postalCode,
-        'locationLat': book.locationLat,
-        'locationLng': book.locationLng,
-        'status': book.status.name,
-        'tradeCount': 0,
-        'interestCount': 0,
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      final data = book.toFirestore()
+        ..['createdAt'] = FieldValue.serverTimestamp()
+        ..['updatedAt'] = FieldValue.serverTimestamp();
+      batch.set(docRef, data);
     }
 
     await batch.commit();
@@ -281,20 +237,10 @@ class FirebaseService {
 
   /// Update book
   static Future<Book?> updateBook(Book book) async {
-    await db.collection('books').doc(book.id).update({
-      'title': book.title,
-      'author': book.author,
-      'description': book.description,
-      'condition': book.condition.name,
-      'isbn': book.isbn,
-      'coverImgUrl': book.coverImgUrl,
-      'locationText': book.locationText,
-      'postalCode': book.postalCode,
-      'locationLat': book.locationLat,
-      'locationLng': book.locationLng,
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-
+    final data = book.toFirestore()
+      ..remove('createdAt')
+      ..['updatedAt'] = FieldValue.serverTimestamp();
+    await db.collection('books').doc(book.id).update(data);
     return getBook(book.id);
   }
 
@@ -312,15 +258,15 @@ class FirebaseService {
     // Get trades where user is initiator
     final initiatorSnapshot = await db
         .collection('trades')
-        .where('initiatorId', isEqualTo: currentUser!.uid)
-        .orderBy('createdAt', descending: true)
+        .where('requesterId', isEqualTo: currentUser!.uid)
+        .orderBy('requestedAt', descending: true)
         .get();
 
-    // Get trades where user is recipient
+    // Get trades where user is the book owner
     final recipientSnapshot = await db
         .collection('trades')
-        .where('recipientId', isEqualTo: currentUser!.uid)
-        .orderBy('createdAt', descending: true)
+        .where('ownerId', isEqualTo: currentUser!.uid)
+        .orderBy('requestedAt', descending: true)
         .get();
 
     // Combine and deduplicate
@@ -338,11 +284,11 @@ class FirebaseService {
 
     // Apply status filter
     if (statusFilter != null) {
-      trades = trades.where((t) => t.status.name == statusFilter).toList();
+      trades = trades.where((t) => t.status.value == statusFilter).toList();
     }
 
     // Sort by date
-    trades.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    trades.sort((a, b) => b.requestedAt.compareTo(a.requestedAt));
 
     return trades;
   }
@@ -453,112 +399,32 @@ class FirebaseService {
   // ============ HELPERS ============
 
   static Profile _docToProfile(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
-    return Profile(
-      id: doc.id,
-      email: data['email'] ?? '',
-      fullName: data['fullName'] ?? '',
-      avatarUrl: data['avatarUrl'] ?? '',
-      bio: data['bio'] ?? '',
-      website: data['website'] ?? '',
-      university: data['university'] ?? '',
-      locationCity: data['locationCity'] ?? '',
-      locationState: data['locationState'] ?? '',
-      locationCountry: data['locationCountry'] ?? '',
-      locationLat: (data['locationLat'] as num?)?.toDouble(),
-      locationLng: (data['locationLng'] as num?)?.toDouble(),
-      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      updatedAt: (data['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-    );
+    return Profile.fromFirestore(doc.data() as Map<String, dynamic>, doc.id);
   }
 
   static Book _docToBook(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
-    return Book(
-      id: doc.id,
-      userId: data['userId'] ?? '',
-      title: data['title'] ?? '',
-      author: data['author'] ?? '',
-      description: data['description'] ?? '',
-      condition: BookCondition.values.firstWhere(
-        (e) => e.name == data['condition'],
-        orElse: () => BookCondition.good,
-      ),
-      isbn: data['isbn'],
-      coverImgUrl: data['coverImgUrl'],
-      publisher: data['publisher'],
-      publicationYear: data['publicationYear'],
-      language: data['language'],
-      pages: data['pages'],
-      genres: (data['genres'] as List<dynamic>?)?.cast<String>(),
-      locationText: data['locationText'] ?? '',
-      postalCode: data['postalCode'],
-      locationLat: (data['locationLat'] as num?)?.toDouble(),
-      locationLng: (data['locationLng'] as num?)?.toDouble(),
-      status: BookStatus.values.firstWhere(
-        (e) => e.name == data['status'],
-        orElse: () => BookStatus.available,
-      ),
-      tradeCount: data['tradeCount'] ?? 0,
-      interestCount: data['interestCount'] ?? 0,
-      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      updatedAt: (data['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-    );
+    return Book.fromFirestore(doc.data() as Map<String, dynamic>, doc.id);
   }
 
   static Future<Trade> _docToTrade(DocumentSnapshot doc) async {
     final data = doc.data() as Map<String, dynamic>;
+    var trade = Trade.fromFirestore(data, doc.id);
 
-    // Fetch initiator and recipient profiles
-    final initiator = data['initiatorId'] != null
-        ? await getProfile(data['initiatorId'])
+    // Hydrate participants and books for display.
+    final requester =
+        trade.requesterId.isNotEmpty ? await getProfile(trade.requesterId) : null;
+    final owner =
+        trade.ownerId.isNotEmpty ? await getProfile(trade.ownerId) : null;
+    final book = trade.bookId.isNotEmpty ? await getBook(trade.bookId) : null;
+    final offeredBook = trade.offeredBookId?.isNotEmpty == true
+        ? await getBook(trade.offeredBookId!)
         : null;
-    final recipient = data['recipientId'] != null
-        ? await getProfile(data['recipientId'])
-        : null;
 
-    // Fetch trade items
-    final itemsSnapshot = await db
-        .collection('trades')
-        .doc(doc.id)
-        .collection('tradeItems')
-        .get();
-
-    final items = await Future.wait(
-      itemsSnapshot.docs.map((itemDoc) async {
-        final itemData = itemDoc.data();
-        final book = itemData['bookId'] != null
-            ? await getBook(itemData['bookId'])
-            : null;
-
-        return TradeItem(
-          id: itemDoc.id,
-          tradeId: doc.id,
-          bookId: itemData['bookId'] ?? '',
-          ownerId: itemData['ownerId'] ?? '',
-          recipientId: itemData['recipientId'] ?? '',
-          itemType: 'book',
-          book: book,
-          createdAt: (itemData['createdAt'] as Timestamp?)?.toDate() ??
-              DateTime.now(),
-        );
-      }),
-    );
-
-    return Trade(
-      id: doc.id,
-      initiatorId: data['initiatorId'] ?? '',
-      recipientId: data['recipientId'] ?? '',
-      status: TradeStatus.fromString(data['status'] as String? ?? 'pending'),
-      initiatorMessage: data['initiatorMessage'],
-      recipientMessage: data['recipientMessage'],
-      isDirectRequest: data['isDirectRequest'] ?? false,
-      isCounteroffered: data['isCounteroffered'] ?? false,
-      initiator: initiator,
-      recipient: recipient,
-      items: items,
-      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      updatedAt: (data['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+    return trade.copyWith(
+      requester: requester,
+      owner: owner,
+      book: book,
+      offeredBook: offeredBook,
     );
   }
 
@@ -592,19 +458,21 @@ class FirebaseService {
   static Future<Message> _docToMessage(
       DocumentSnapshot doc, String conversationId) async {
     final data = doc.data() as Map<String, dynamic>;
-
-    final user =
-        data['userId'] != null ? await getProfile(data['userId']) : null;
+    final senderId =
+        data['senderId'] as String? ?? data['userId'] as String? ?? '';
+    final sender = senderId.isNotEmpty ? await getProfile(senderId) : null;
 
     return Message(
       id: doc.id,
+      senderId: senderId,
+      text: data['text'] as String? ?? data['content'] as String? ?? '',
+      type: MessageType.fromString(data['type'] as String?),
+      createdAt: dateFromFirestore(data['createdAt']) ?? DateTime.now(),
+      sender: sender,
+      // ignore: deprecated_member_use_from_same_package
       conversationId: conversationId,
-      userId: data['userId'] ?? '',
-      content: data['content'] ?? '',
-      relatedBookId: data['relatedBookId'],
-      user: user,
-      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      updatedAt: (data['updatedAt'] as Timestamp?)?.toDate(),
+      // ignore: deprecated_member_use_from_same_package
+      relatedBookId: data['relatedBookId'] as String?,
     );
   }
 }

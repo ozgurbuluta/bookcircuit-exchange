@@ -108,9 +108,8 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
     final messenger = ScaffoldMessenger.of(context);
     final router = GoRouter.of(context);
     final trade = await ref.read(tradeActionsProvider.notifier).createTrade(
-          partnerId: book.userId,
-          myBookIds: [],
-          theirBookIds: [book.id],
+          ownerId: book.ownerId,
+          bookId: book.id,
         );
     if (!mounted) return;
 

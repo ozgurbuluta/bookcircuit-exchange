@@ -226,11 +226,11 @@ class ProfileScreen extends ConsumerWidget {
                                       author: book.author,
                                       width: 104,
                                     ),
-                                    if (book.status == BookStatus.trading)
+                                    if (book.status == BookStatus.inTrade)
                                       Positioned(
                                         top: 7,
                                         left: 7,
-                                        child: StatusPill(status: TradeStatus.pending),
+                                        child: StatusPill(status: TradeStatus.requested),
                                       ),
                                   ],
                                 ),

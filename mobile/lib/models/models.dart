@@ -1,6 +1,9 @@
 // Export all models
-export 'profile.dart';
 export 'book.dart';
-export 'detected_book.dart';
-export 'trade.dart';
 export 'conversation.dart';
+export 'detected_book.dart';
+export 'firestore_helpers.dart';
+export 'notification.dart';
+export 'profile.dart';
+export 'rating.dart';
+export 'trade.dart';

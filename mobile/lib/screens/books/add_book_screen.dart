@@ -332,19 +332,15 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
 
     final book = Book(
       id: '',
-      userId: currentUser.uid,
+      ownerId: currentUser.uid,
       title: _titleController.text.trim(),
       author: _authorController.text.trim(),
-      description: _descriptionController.text.trim().isEmpty
-          ? null
-          : _descriptionController.text.trim(),
       condition: _condition,
       isbn: _isbnController.text.trim().isEmpty
           ? null
           : _isbnController.text.trim(),
       language: _selectedLanguage,
-      coverImgUrl: coverUrl,
-      locationText: locationText,
+      source: BookSource.manual,
       locationLat: locationLat,
       locationLng: locationLng,
       createdAt: DateTime.now(),

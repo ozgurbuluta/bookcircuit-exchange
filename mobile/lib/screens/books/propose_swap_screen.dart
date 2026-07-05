@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../config/theme.dart';
-import '../../models/book.dart';
+import '../../models/models.dart';
 import '../../providers/providers.dart';
 import '../../widgets/widgets.dart';
 
@@ -32,10 +32,11 @@ class _ProposeSwapScreenState extends ConsumerState<ProposeSwapScreen> {
     if (targetBook == null) return;
 
     final trade = await ref.read(tradeActionsProvider.notifier).createTrade(
-          partnerId: targetBook.userId,
-          myBookIds: [_selectedBookId!],
-          theirBookIds: [widget.bookId],
-          message: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
+          ownerId: targetBook.ownerId,
+          bookId: widget.bookId,
+          offer: TradeOffer.book,
+          offeredBookId: _selectedBookId,
+          note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
         );
 
     if (trade != null && mounted) {
@@ -135,7 +136,7 @@ class _ProposeSwapScreenState extends ConsumerState<ProposeSwapScreen> {
                   const SizedBox(height: 12),
                   myBooksAsync.when(
                     data: (books) {
-                      final available = books.where((b) => b.status == BookStatus.available).toList();
+                      final available = books.where((b) => b.isRequestable).toList();
                       return SizedBox(
                         height: 180,
                         child: ListView.builder(

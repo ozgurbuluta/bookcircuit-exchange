@@ -67,19 +67,16 @@ class DetectedBook {
     final now = DateTime.now();
     return Book(
       id: '',
-      userId: userId,
+      ownerId: userId,
       title: title.trim(),
       author: author.trim(),
-      description:
-          (description == null || description!.trim().isEmpty) ? null : description!.trim(),
       condition: condition,
       isbn: (isbn == null || isbn!.trim().isEmpty) ? null : isbn!.trim(),
       language: language,
-      coverImgUrl: coverUrl,
       publisher: publisher,
-      publicationYear: publishYear,
+      year: publishYear,
       pages: pages,
-      locationText: locationText,
+      source: BookSource.scan,
       locationLat: locationLat,
       locationLng: locationLng,
       createdAt: now,

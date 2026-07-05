@@ -14,15 +14,13 @@ enum TradeFilter {
   String? get statusFilter {
     switch (this) {
       case TradeFilter.all:
-        return null;
       // 'incoming'/'outgoing' are not trade statuses; these are resolved with
-      // client-side initiator/recipient filtering instead (see tradesProvider).
+      // client-side requester/owner filtering instead (see tradesProvider).
       case TradeFilter.incoming:
-        return null;
       case TradeFilter.outgoing:
         return null;
       case TradeFilter.done:
-        return 'completed';
+        return 'swapped';
     }
   }
 }
@@ -41,9 +39,9 @@ final tradesProvider = FutureProvider.autoDispose<List<Trade>>((ref) async {
 
   // Apply additional client-side filtering for incoming/outgoing
   if (filter == TradeFilter.incoming && currentUser != null) {
-    trades = trades.where((t) => t.recipientId == currentUser.uid).toList();
+    trades = trades.where((t) => t.ownerId == currentUser.uid).toList();
   } else if (filter == TradeFilter.outgoing && currentUser != null) {
-    trades = trades.where((t) => t.initiatorId == currentUser.uid).toList();
+    trades = trades.where((t) => t.requesterId == currentUser.uid).toList();
   }
 
   return trades;
@@ -63,69 +61,45 @@ final pendingTradesCountProvider = FutureProvider.autoDispose<int>((ref) async {
   final trades = await FirebaseService.getUserTrades();
   return trades
       .where((t) =>
-          t.recipientId == userId &&
-          (t.status == TradeStatus.pending ||
-              t.status == TradeStatus.requestPending))
+          t.ownerId == userId && t.status == TradeStatus.requested)
       .length;
 });
 
-/// Trade actions notifier
+/// Trade actions notifier.
+///
+/// NOTE: interim implementation — Phase H replaces these plain status writes
+/// with the TradeEngine (escrow, refunds, auto-decline, two-sided swap
+/// confirmation, book locking) per docs/REDESIGN_PLAN.md §3.
 class TradeActionsNotifier extends StateNotifier<AsyncValue<void>> {
   TradeActionsNotifier() : super(const AsyncValue.data(null));
 
-  /// Create a new trade
+  /// Create a trade request for one book (spec §4).
   Future<Trade?> createTrade({
-    required String partnerId,
-    required List<String> myBookIds,
-    required List<String> theirBookIds,
-    String? message,
+    required String ownerId,
+    required String bookId,
+    TradeOffer offer = TradeOffer.points50,
+    String? offeredBookId,
+    String? note,
   }) async {
     state = const AsyncValue.loading();
     try {
-      // TODO: Implement create trade in FirebaseService
-      // For now, create directly in Firestore
       final currentUser = FirebaseService.currentUser;
       if (currentUser == null) throw Exception('Not authenticated');
 
-      final batch = FirebaseService.db.batch();
-
       final tradeRef = FirebaseService.db.collection('trades').doc();
-      batch.set(tradeRef, {
-        'initiatorId': currentUser.uid,
-        'recipientId': partnerId,
-        'status': 'pending',
-        'initiatorMessage': message ?? '',
-        'recipientMessage': '',
-        'isDirectRequest': theirBookIds.length == 1 && myBookIds.isEmpty,
-        'isCounteroffered': false,
-        'createdAt': FieldValue.serverTimestamp(),
+      await tradeRef.set({
+        'bookId': bookId,
+        'requesterId': currentUser.uid,
+        'ownerId': ownerId,
+        'offer': offer.value,
+        'offeredBookId': offeredBookId,
+        'note': note,
+        'status': TradeStatus.requested.value,
+        'escrowed': false,
+        'swapConfirmedBy': <String>[],
+        'requestedAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
-
-      // Add trade items
-      for (final bookId in myBookIds) {
-        final itemRef = tradeRef.collection('tradeItems').doc();
-        batch.set(itemRef, {
-          'bookId': bookId,
-          'ownerId': currentUser.uid,
-          'recipientId': partnerId,
-          'itemType': 'book',
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-      }
-
-      for (final bookId in theirBookIds) {
-        final itemRef = tradeRef.collection('tradeItems').doc();
-        batch.set(itemRef, {
-          'bookId': bookId,
-          'ownerId': partnerId,
-          'recipientId': currentUser.uid,
-          'itemType': 'book',
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-      }
-
-      await batch.commit();
 
       final trade = await FirebaseService.getTrade(tradeRef.id);
       state = const AsyncValue.data(null);
@@ -136,13 +110,12 @@ class TradeActionsNotifier extends StateNotifier<AsyncValue<void>> {
     }
   }
 
-  /// Accept a trade
-  Future<bool> acceptTrade(String tradeId) async {
+  Future<bool> _setStatus(String tradeId, TradeStatus status) async {
     state = const AsyncValue.loading();
     try {
       await FirebaseService.updateTradeStatus(
         tradeId: tradeId,
-        newStatus: 'accepted',
+        newStatus: status.value,
       );
       state = const AsyncValue.data(null);
       return true;
@@ -152,53 +125,21 @@ class TradeActionsNotifier extends StateNotifier<AsyncValue<void>> {
     }
   }
 
-  /// Reject a trade
-  Future<bool> rejectTrade(String tradeId) async {
-    state = const AsyncValue.loading();
-    try {
-      await FirebaseService.updateTradeStatus(
-        tradeId: tradeId,
-        newStatus: 'rejected',
-      );
-      state = const AsyncValue.data(null);
-      return true;
-    } catch (e, st) {
-      state = AsyncValue.error(e, st);
-      return false;
-    }
-  }
+  /// Accept a trade
+  Future<bool> acceptTrade(String tradeId) =>
+      _setStatus(tradeId, TradeStatus.accepted);
+
+  /// Decline a trade
+  Future<bool> rejectTrade(String tradeId) =>
+      _setStatus(tradeId, TradeStatus.declined);
 
   /// Cancel a trade
-  Future<bool> cancelTrade(String tradeId) async {
-    state = const AsyncValue.loading();
-    try {
-      await FirebaseService.updateTradeStatus(
-        tradeId: tradeId,
-        newStatus: 'cancelled',
-      );
-      state = const AsyncValue.data(null);
-      return true;
-    } catch (e, st) {
-      state = AsyncValue.error(e, st);
-      return false;
-    }
-  }
+  Future<bool> cancelTrade(String tradeId) =>
+      _setStatus(tradeId, TradeStatus.cancelled);
 
-  /// Complete a trade
-  Future<bool> completeTrade(String tradeId) async {
-    state = const AsyncValue.loading();
-    try {
-      await FirebaseService.updateTradeStatus(
-        tradeId: tradeId,
-        newStatus: 'completed',
-      );
-      state = const AsyncValue.data(null);
-      return true;
-    } catch (e, st) {
-      state = AsyncValue.error(e, st);
-      return false;
-    }
-  }
+  /// Complete a trade (interim: Phase H replaces with two-sided confirm)
+  Future<bool> completeTrade(String tradeId) =>
+      _setStatus(tradeId, TradeStatus.swapped);
 }
 
 final tradeActionsProvider =
