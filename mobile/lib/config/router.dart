@@ -25,8 +25,6 @@ class AppRoutes {
   static const String messages = '/messages';
   static const String profile = '/profile';
   static const String bookDetail = '/book/:id';
-  static const String tradeDetail = '/trade/:id';
-  static const String chat = '/chat/:id';
   static const String addBook = '/add-book';
   static const String scanShelf = '/scan-shelf';
   static const String scanReview = '/scan-review';
@@ -162,26 +160,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final bookId = state.pathParameters['id']!;
           return BookDetailScreen(bookId: bookId);
-        },
-      ),
-      GoRoute(
-        path: AppRoutes.tradeDetail,
-        builder: (context, state) {
-          final tradeId = state.pathParameters['id']!;
-          return TradeDetailScreen(tradeId: tradeId);
-        },
-      ),
-      GoRoute(
-        path: AppRoutes.chat,
-        builder: (context, state) {
-          final conversationId = state.pathParameters['id']!;
-          final otherUserId = state.uri.queryParameters['userId'];
-          final bookId = state.uri.queryParameters['bookId'];
-          return ChatScreen(
-            conversationId: conversationId,
-            otherUserId: otherUserId,
-            bookId: bookId,
-          );
         },
       ),
       GoRoute(

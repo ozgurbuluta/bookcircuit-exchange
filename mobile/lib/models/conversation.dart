@@ -1,5 +1,4 @@
 import 'firestore_helpers.dart';
-import 'book.dart';
 import 'profile.dart';
 
 /// Message type (spec §3): user text or system event (escrowed, accepted,
@@ -87,32 +86,3 @@ class Message {
   }
 }
 
-/// Legacy conversation model — replaced by per-trade threads in Phase I.
-@Deprecated('Chat threads exist only per trade in v1 (spec §9)')
-class Conversation {
-  final String id;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-  final String? lastMessage;
-  final DateTime? lastMessageAt;
-  final String? lastMessageSenderId;
-  final int unreadCount;
-  final Profile? otherUser;
-  final String? bookId;
-  final Book? book;
-
-  Conversation({
-    required this.id,
-    required this.createdAt,
-    required this.updatedAt,
-    this.lastMessage,
-    this.lastMessageAt,
-    this.lastMessageSenderId,
-    this.unreadCount = 0,
-    this.otherUser,
-    this.bookId,
-    this.book,
-  });
-
-  bool get hasUnread => unreadCount > 0;
-}
