@@ -17,6 +17,8 @@ class AppRoutes {
   static const String welcome = '/welcome';
   static const String emailSignIn = '/email-sign-in';
   static const String home = '/home';
+  static const String journal = '/journal';
+  static const String shelf = '/shelf';
   static const String discover = '/discover';
   static const String trades = '/trades';
   static const String messages = '/messages';
@@ -116,15 +118,9 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           ),
           GoRoute(
-            path: AppRoutes.discover,
+            path: AppRoutes.journal,
             pageBuilder: (context, state) => const NoTransitionPage(
-              child: DiscoverScreen(),
-            ),
-          ),
-          GoRoute(
-            path: AppRoutes.trades,
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: TradesScreen(),
+              child: JournalScreen(),
             ),
           ),
           GoRoute(
@@ -134,12 +130,26 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           ),
           GoRoute(
-            path: AppRoutes.profile,
+            path: AppRoutes.shelf,
             pageBuilder: (context, state) => const NoTransitionPage(
               child: ProfileScreen(),
             ),
           ),
         ],
+      ),
+      // Pushed screens (not tabs): My trades via the points badge (spec §2),
+      // map/discover until Phase G folds it into Home.
+      GoRoute(
+        path: AppRoutes.trades,
+        builder: (context, state) => const TradesScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.discover,
+        builder: (context, state) => const DiscoverScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.profile,
+        builder: (context, state) => const ProfileScreen(),
       ),
       GoRoute(
         path: AppRoutes.bookDetail,

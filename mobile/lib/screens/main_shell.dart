@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,7 +5,10 @@ import 'package:go_router/go_router.dart';
 import '../config/theme.dart';
 import '../config/router.dart';
 import '../providers/providers.dart';
+import '../widgets/unread_badge.dart';
 
+/// Tab shell (spec §2): Home · Journal · Add book (center) · Chats · Shelf.
+/// The center slot is an action, not a tab — it pushes the add-book flow.
 class MainShell extends ConsumerStatefulWidget {
   final Widget child;
 
@@ -17,44 +19,49 @@ class MainShell extends ConsumerStatefulWidget {
 }
 
 class _MainShellState extends ConsumerState<MainShell> {
-  int _currentIndex = 0;
-
   static const _tabs = [
-    _TabItem(route: AppRoutes.home, icon: Icons.home_outlined, activeIcon: Icons.home, label: 'Home'),
-    _TabItem(route: AppRoutes.discover, icon: Icons.search_outlined, activeIcon: Icons.search, label: 'Discover'),
-    _TabItem(route: AppRoutes.trades, icon: Icons.swap_horiz_outlined, activeIcon: Icons.swap_horiz, label: 'Trades'),
-    _TabItem(route: AppRoutes.messages, icon: Icons.chat_bubble_outline, activeIcon: Icons.chat_bubble, label: 'Messages'),
-    _TabItem(route: AppRoutes.profile, icon: Icons.person_outline, activeIcon: Icons.person, label: 'Profile'),
+    _TabItem(
+        route: AppRoutes.home,
+        icon: Icons.home_outlined,
+        activeIcon: Icons.home,
+        label: 'Home'),
+    _TabItem(
+        route: AppRoutes.journal,
+        icon: Icons.menu_book_outlined,
+        activeIcon: Icons.menu_book,
+        label: 'Journal'),
+    _TabItem(
+        route: AppRoutes.messages,
+        icon: Icons.chat_bubble_outline,
+        activeIcon: Icons.chat_bubble,
+        label: 'Chats'),
+    _TabItem(
+        route: AppRoutes.shelf,
+        icon: Icons.collections_bookmark_outlined,
+        activeIcon: Icons.collections_bookmark,
+        label: 'Shelf'),
   ];
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _updateCurrentIndex();
-  }
-
-  void _updateCurrentIndex() {
+  int get _currentIndex {
     final location = GoRouterState.of(context).matchedLocation;
     final index = _tabs.indexWhere((tab) => tab.route == location);
-    if (index != -1 && index != _currentIndex) {
-      setState(() => _currentIndex = index);
-    }
+    return index == -1 ? 0 : index;
   }
 
   void _onTabTapped(int index) {
     if (index == _currentIndex) return;
     HapticFeedback.selectionClick();
-    setState(() => _currentIndex = index);
     context.go(_tabs[index].route);
   }
 
-  void _showAddOptions() {
+  void _openAddBook() {
+    HapticFeedback.selectionClick();
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         decoration: const BoxDecoration(
-          color: AppColors.paper,
+          color: AppColors.bg,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: SafeArea(
@@ -67,31 +74,50 @@ class _MainShellState extends ConsumerState<MainShell> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: AppColors.ink.withValues(alpha: 0.15),
+                  color: AppColors.line,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
               const SizedBox(height: 8),
               ListTile(
-                leading: const Icon(Icons.edit_outlined, color: AppColors.ink2),
-                title: Text('Add a book',
-                    style: AppTypography.sansSemiBold.copyWith(color: AppColors.ink)),
-                subtitle: Text('Search and add one book',
-                    style: AppTypography.sansRegular.copyWith(fontSize: 12.5, color: AppColors.ink3)),
+                leading: const Icon(Icons.photo_camera_outlined,
+                    color: AppColors.green),
+                title: Text('Scan a book',
+                    style: AppTypography.sansSemiBold
+                        .copyWith(color: AppColors.ink)),
+                subtitle: Text('Cover or barcode — details fill themselves in',
+                    style: AppTypography.sansRegular
+                        .copyWith(fontSize: 12.5, color: AppColors.ink3)),
                 onTap: () {
                   Navigator.pop(ctx);
                   context.push(AppRoutes.addBook);
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.document_scanner_outlined, color: AppColors.rust),
+                leading: const Icon(Icons.document_scanner_outlined,
+                    color: AppColors.green),
                 title: Text('Scan a shelf',
-                    style: AppTypography.sansSemiBold.copyWith(color: AppColors.ink)),
+                    style: AppTypography.sansSemiBold
+                        .copyWith(color: AppColors.ink)),
                 subtitle: Text('Photograph a shelf to add many at once',
-                    style: AppTypography.sansRegular.copyWith(fontSize: 12.5, color: AppColors.ink3)),
+                    style: AppTypography.sansRegular
+                        .copyWith(fontSize: 12.5, color: AppColors.ink3)),
                 onTap: () {
                   Navigator.pop(ctx);
                   context.push(AppRoutes.scanShelf);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.edit_outlined, color: AppColors.ink2),
+                title: Text('Enter manually',
+                    style: AppTypography.sansSemiBold
+                        .copyWith(color: AppColors.ink)),
+                subtitle: Text('Type the details yourself',
+                    style: AppTypography.sansRegular
+                        .copyWith(fontSize: 12.5, color: AppColors.ink3)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.push(AppRoutes.addBook);
                 },
               ),
               const SizedBox(height: 12),
@@ -104,70 +130,51 @@ class _MainShellState extends ConsumerState<MainShell> {
 
   @override
   Widget build(BuildContext context) {
-    // Watch for badge counts
-    final pendingTrades = ref.watch(pendingTradesCountProvider);
     final unreadMessages = ref.watch(unreadMessagesCountProvider);
+    final currentIndex = _currentIndex;
 
-    // Show FAB only on Home tab
-    final showFab = _currentIndex == 0;
+    final chatBadge = unreadMessages.maybeWhen(
+      data: (count) => count,
+      orElse: () => 0,
+    );
 
     return Scaffold(
       body: widget.child,
-      extendBody: true,
-      floatingActionButton: showFab
-          ? FloatingActionButton(
-              onPressed: _showAddOptions,
-              backgroundColor: AppColors.rust,
-              elevation: 4,
-              child: const Icon(Icons.add, color: Colors.white, size: 28),
-            )
-          : null,
-      bottomNavigationBar: ClipRRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-          child: Container(
-            decoration: const BoxDecoration(
-              color: Color(0xD2F6EEDF), // paper3 with 82% opacity
-              border: Border(
-                top: BorderSide(color: AppColors.line, width: 0.5),
-              ),
-            ),
-            child: SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 8, bottom: 0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: List.generate(_tabs.length, (index) {
-                    final tab = _tabs[index];
-                    final isActive = index == _currentIndex;
-
-                    // Get badge count for this tab
-                    int? badge;
-                    if (tab.route == AppRoutes.trades) {
-                      badge = pendingTrades.when(
-                        data: (count) => count > 0 ? count : null,
-                        loading: () => null,
-                        error: (_, __) => null,
-                      );
-                    } else if (tab.route == AppRoutes.messages) {
-                      badge = unreadMessages.when(
-                        data: (count) => count > 0 ? count : null,
-                        loading: () => null,
-                        error: (_, __) => null,
-                      );
-                    }
-
-                    return _TabBarItem(
-                      icon: isActive ? tab.activeIcon : tab.icon,
-                      label: tab.label,
-                      isActive: isActive,
-                      badge: badge,
-                      onTap: () => _onTabTapped(index),
-                    );
-                  }),
+      bottomNavigationBar: Container(
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          border: Border(top: BorderSide(color: AppColors.line, width: 1)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _TabBarItem(
+                  tab: _tabs[0],
+                  isActive: currentIndex == 0,
+                  onTap: () => _onTabTapped(0),
                 ),
-              ),
+                _TabBarItem(
+                  tab: _tabs[1],
+                  isActive: currentIndex == 1,
+                  onTap: () => _onTabTapped(1),
+                ),
+                _AddBookButton(onTap: _openAddBook),
+                _TabBarItem(
+                  tab: _tabs[2],
+                  isActive: currentIndex == 2,
+                  badge: chatBadge,
+                  onTap: () => _onTabTapped(2),
+                ),
+                _TabBarItem(
+                  tab: _tabs[3],
+                  isActive: currentIndex == 3,
+                  onTap: () => _onTabTapped(3),
+                ),
+              ],
             ),
           ),
         ),
@@ -191,17 +198,15 @@ class _TabItem {
 }
 
 class _TabBarItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
+  final _TabItem tab;
   final bool isActive;
-  final int? badge;
+  final int badge;
   final VoidCallback onTap;
 
   const _TabBarItem({
-    required this.icon,
-    required this.label,
+    required this.tab,
     required this.isActive,
-    this.badge,
+    this.badge = 0,
     required this.onTap,
   });
 
@@ -211,7 +216,7 @@ class _TabBarItem extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
-        width: 64,
+        width: 62,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -219,45 +224,73 @@ class _TabBarItem extends StatelessWidget {
               clipBehavior: Clip.none,
               children: [
                 Icon(
-                  icon,
-                  size: 25,
-                  color: isActive ? AppColors.rust : AppColors.ink3,
+                  isActive ? tab.activeIcon : tab.icon,
+                  size: 24,
+                  color: isActive ? AppColors.green : AppColors.ink3,
                 ),
-                if (badge != null)
+                if (badge > 0)
                   Positioned(
-                    top: -4,
-                    right: -8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      constraints: const BoxConstraints(minWidth: 15, minHeight: 15),
-                      decoration: BoxDecoration(
-                        color: AppColors.rust,
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(
-                          color: AppColors.paper3,
-                          width: 1.5,
-                        ),
-                      ),
-                      child: Center(
-                        child: Text(
-                          badge! > 99 ? '99+' : badge.toString(),
-                          style: AppTypography.sansBold.copyWith(
-                            fontSize: 9.5,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
+                    top: -5,
+                    right: -9,
+                    child: UnreadBadge(count: badge),
                   ),
               ],
             ),
             const SizedBox(height: 3),
             Text(
-              label,
+              tab.label,
               style: AppTypography.sansMedium.copyWith(
                 fontSize: 10.5,
                 fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-                color: isActive ? AppColors.rust : AppColors.ink3,
+                color: isActive ? AppColors.green : AppColors.ink3,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Center "Add book" action (spec §2) — raised green disc + label.
+class _AddBookButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _AddBookButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      key: const Key('add_book_fab'),
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: 62,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: const BoxDecoration(
+                color: AppColors.green,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.shadow,
+                    blurRadius: 8,
+                    offset: Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.add, color: AppColors.bg, size: 24),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'Add book',
+              style: AppTypography.sansMedium.copyWith(
+                fontSize: 10.5,
+                color: AppColors.ink3,
               ),
             ),
           ],

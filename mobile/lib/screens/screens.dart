@@ -7,6 +7,7 @@ export 'auth/welcome_screen.dart';
 export 'auth/email_sign_in_screen.dart';
 export 'main_shell.dart';
 export 'home/home_screen.dart';
+export 'journal/journal_screen.dart';
 export 'discover/discover_screen.dart';
 export 'trades/trades_screen.dart';
 export 'trades/trade_detail_screen.dart';
