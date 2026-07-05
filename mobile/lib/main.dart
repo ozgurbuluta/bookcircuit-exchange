@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'config/theme.dart';
 import 'config/router.dart';
 import 'config/firebase_options.dart';
+import 'services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -54,6 +55,7 @@ class TurtleTurningPagesApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
+    NotificationService().onOpenRoute = (route) => router.push(route);
 
     return MaterialApp.router(
       title: 'Turtle Turning Pages',

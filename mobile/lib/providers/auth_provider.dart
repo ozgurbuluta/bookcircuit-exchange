@@ -9,6 +9,7 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import '../models/models.dart';
 import '../services/auth_service.dart';
 import '../services/firebase_service.dart';
+import '../services/notification_service.dart';
 import '../services/user_bootstrap_service.dart';
 
 /// Auth state model
@@ -150,6 +151,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
       }
 
       state = AuthState(user: user, profile: profile, isLoading: false);
+      // Best-effort push registration (D12) — never blocks sign-in.
+      NotificationService().registerForUser(user.uid);
     } catch (e) {
       state = AuthState(
         user: user,
@@ -228,6 +231,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> signOut() async {
     state = state.copyWith(isLoading: true);
     try {
+      final uid = state.user?.uid;
+      if (uid != null) {
+        await NotificationService().unregister(uid);
+      }
       await AuthService.signOut();
       state = const AuthState(isLoading: false);
     } catch (e) {

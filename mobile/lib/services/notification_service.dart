@@ -1,18 +1,11 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 
-/// Notification service for push notifications
-///
-/// This service will handle:
-/// - Firebase Cloud Messaging (FCM) setup
-/// - Local notifications
-/// - Notification permissions
-/// - Deep linking from notifications
-///
-/// TODO: Implement when ready to add push notifications
-/// Required packages:
-/// - firebase_messaging
-/// - flutter_local_notifications
-/// - firebase_core
+import 'firebase_service.dart';
+
+/// Push notifications (decision D12): FCM token registration + tap routing.
+/// The server side lives in functions/src/index.ts (pushFanout) — every
+/// `notifications` document becomes a push.
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
@@ -20,84 +13,79 @@ class NotificationService {
 
   bool _initialized = false;
 
-  /// Initialize the notification service
-  Future<void> initialize() async {
-    if (_initialized) return;
+  /// Where taps should land: '/trade-chat/:id', '/notifications', etc.
+  /// Set by the router owner at startup.
+  void Function(String route)? onOpenRoute;
 
-    // TODO: Initialize Firebase
-    // await Firebase.initializeApp();
+  /// Call after sign-in: asks permission, stores the token on the user doc,
+  /// keeps it fresh, and wires tap handling.
+  Future<void> registerForUser(String userId) async {
+    try {
+      final messaging = FirebaseMessaging.instance;
 
-    // TODO: Request notification permissions
-    // final settings = await FirebaseMessaging.instance.requestPermission(
-    //   alert: true,
-    //   badge: true,
-    //   sound: true,
-    // );
+      final settings = await messaging.requestPermission();
+      if (settings.authorizationStatus == AuthorizationStatus.denied) {
+        return;
+      }
 
-    // TODO: Get FCM token and save to user profile
-    // final token = await FirebaseMessaging.instance.getToken();
+      final token = await messaging.getToken();
+      if (token != null) {
+        await FirebaseService.db.collection('users').doc(userId).update({
+          'fcmToken': token,
+        });
+      }
 
-    // TODO: Set up foreground message handler
-    // FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
+      if (!_initialized) {
+        _initialized = true;
 
-    // TODO: Set up background message handler
-    // FirebaseMessaging.onBackgroundMessage(_handleBackgroundMessage);
+        FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
+          FirebaseService.db
+              .collection('users')
+              .doc(userId)
+              .update({'fcmToken': newToken});
+        });
 
-    // TODO: Handle notification tap when app is terminated
-    // final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+        // Cold-start tap
+        final initial = await messaging.getInitialMessage();
+        if (initial != null) _route(initial);
 
-    _initialized = true;
-    debugPrint('NotificationService: Initialized (placeholder)');
+        // Background tap
+        FirebaseMessaging.onMessageOpenedApp.listen(_route);
+      }
+    } catch (e) {
+      // Push is best-effort; never block sign-in on it.
+      debugPrint('FCM registration failed: $e');
+    }
   }
 
-  /// Request notification permissions
-  Future<bool> requestPermissions() async {
-    // TODO: Implement permission request
-    debugPrint('NotificationService: Permission request (placeholder)');
-    return true;
+  void _route(RemoteMessage message) {
+    final type = message.data['type'] as String?;
+    final refId = message.data['refId'] as String?;
+    if (onOpenRoute == null) return;
+
+    switch (type) {
+      case 'request_received':
+      case 'request_accepted':
+      case 'marked_swapped':
+        if (refId != null && refId.isNotEmpty) {
+          onOpenRoute!('/trade-chat/$refId');
+          return;
+        }
+      case 'journal_event':
+        onOpenRoute!('/journal');
+        return;
+    }
+    onOpenRoute!('/notifications');
   }
 
-  /// Get the FCM token
-  Future<String?> getToken() async {
-    // TODO: Get FCM token
-    debugPrint('NotificationService: Get token (placeholder)');
-    return null;
-  }
-
-  /// Subscribe to a topic
-  Future<void> subscribeToTopic(String topic) async {
-    // TODO: Subscribe to FCM topic
-    debugPrint('NotificationService: Subscribe to topic $topic (placeholder)');
-  }
-
-  /// Unsubscribe from a topic
-  Future<void> unsubscribeFromTopic(String topic) async {
-    // TODO: Unsubscribe from FCM topic
-    debugPrint('NotificationService: Unsubscribe from topic $topic (placeholder)');
-  }
-
-  /// Show a local notification
-  Future<void> showLocalNotification({
-    required String title,
-    required String body,
-    String? payload,
-  }) async {
-    // TODO: Show local notification
-    debugPrint('NotificationService: Show notification - $title: $body (placeholder)');
-  }
-
-  /// Clear all notifications
-  Future<void> clearAll() async {
-    // TODO: Clear all notifications
-    debugPrint('NotificationService: Clear all (placeholder)');
-  }
-
-  /// Clear notification by ID
-  Future<void> clear(int id) async {
-    // TODO: Clear notification by ID
-    debugPrint('NotificationService: Clear $id (placeholder)');
+  /// Clears the token on sign-out so a shared device stops receiving pushes.
+  Future<void> unregister(String userId) async {
+    try {
+      await FirebaseService.db
+          .collection('users')
+          .doc(userId)
+          .update({'fcmToken': null});
+      await FirebaseMessaging.instance.deleteToken();
+    } catch (_) {/* best effort */}
   }
 }
-
-/// Singleton instance
-final notificationService = NotificationService();

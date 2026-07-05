@@ -10,9 +10,15 @@ final conversationsProvider =
 });
 
 /// Unread messages count provider (for badge)
+/// Chats-tab badge: incoming requests waiting on you (v1 proxy for unread —
+/// per-thread read tracking is a v1.1 follow-up).
 final unreadMessagesCountProvider = FutureProvider.autoDispose<int>((ref) async {
-  final conversations = await FirebaseService.getConversations();
-  return conversations.fold<int>(0, (sum, c) => sum + c.unreadCount);
+  final userId = FirebaseService.currentUser?.uid;
+  if (userId == null) return 0;
+  final trades = await FirebaseService.getUserTrades();
+  return trades
+      .where((t) => t.ownerId == userId && t.status.value == 'requested')
+      .length;
 });
 
 /// Single conversation provider
