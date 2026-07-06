@@ -15,5 +15,29 @@
         "npm --prefix \"$RESOURCE_DIR\" run build"
       ]
     }
-  ]
+  ],
+  "hosting": {
+    "public": "hosting",
+    "ignore": [
+      "firebase.json"
+    ],
+    "headers": [
+      {
+        "source": "/.well-known/apple-app-site-association",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ]
+      }
+    ],
+    "rewrites": [
+      {
+        "source": "/finishSignIn**",
+        "destination": "/finishSignIn.html"
+      }
+    ],
+    "appAssociation": "NONE"
+  }
 }

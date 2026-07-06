@@ -1,54 +1,48 @@
-# Data reset at v1 cutover (decision D3)
+# Data reset at v1 cutover (decision D3) — EXECUTED 2026-07-06
 
-Tester data is wiped at the redesign cutover — no migration. Old multi-book
-trades cannot map to the single-book model, and everyone restarts with the
-200-pt welcome grant.
+The reset has been run. This file records what happened and what little
+remains manual.
 
-Run these as a project owner, AFTER deploying the new rules/indexes/functions
-and BEFORE releasing Build 11 to TestFlight.
+## Done (automated via firebase/gcloud CLI + REST)
 
-## 1. Backup (for the record)
+- [x] **Backup** exported to `gs://turtle-turning-pages-backups/pre-v1-reset`
+      (new us-central1 bucket; the default bucket is us-east1 and can't
+      receive Firestore exports)
+- [x] **Firestore rules + indexes deployed** (rules compiled clean; 7 stale
+      legacy indexes deleted)
+- [x] **Cloud Functions deployed** (all Node 20 / v2, us-central1):
+      `expirySweep` + `swapReminderSweep` hourly via Cloud Scheduler (ENABLED),
+      `pushFanout` on notification create; artifact cleanup policy set
+- [x] **Collections wiped**: books, trades, conversations, bookInterests,
+      bookRequests, tradeHistory, notifications, ratings, users — all verified
+      empty. Auth accounts kept: testers re-onboard and receive the fresh
+      200-pt grant automatically.
+- [x] **Journal seeded**: 3 `blogPosts` entries (story, reading list, and the
+      Moda Park meetup event) so the Journal tab has content
+- [x] **Auth providers**: email-link (passwordless) enabled, **Apple enabled**
+      (client = bundle ID); authorized domains already include
+      turtle-turning-pages.web.app
+- [x] **Universal links live**: `https://turtle-turning-pages.web.app/.well-known/apple-app-site-association`
+      serves appID `4WXK55P8VB.com.turtleturningpages.turtleTurningPages`,
+      paths `/finishSignIn*` (Hosting `appAssociation: NONE` so our file wins);
+      plus a small branded landing page
 
-```bash
-gcloud firestore export gs://turtle-turning-pages.firebasestorage.app/backups/pre-v1-reset \
-  --project turtle-turning-pages
-```
+## Remaining manual steps (cannot be automated)
 
-## 2. Deploy the new backend
+1. **Enable Google sign-in** — Firebase console → Authentication →
+   Sign-in method → Google → Enable (pick the support email). This
+   auto-provisions the iOS OAuth client. THEN tell Claude — fetching the
+   updated `GoogleService-Info.plist` and wiring `REVERSED_CLIENT_ID` into
+   `Info.plist` is scripted and ready to run.
+2. **Apple Developer portal** (developer.apple.com, team 4WXK55P8VB):
+   - App ID `com.turtleturningpages.turtleTurningPages` → enable
+     **Sign in with Apple** and **Push Notifications** capabilities
+     (Xcode automatic signing usually syncs this on the next archive)
+   - Keys → create an **APNs key (.p8)** → upload it in Firebase console →
+     Project settings → Cloud Messaging → Apple app configuration
+3. **Archive Build 11 and upload to TestFlight** (Xcode: Product → Archive).
 
-```bash
-cd /path/to/bookcircuit-exchange
-firebase deploy --only firestore,functions --project turtle-turning-pages
-```
-
-(First functions deploy asks to enable Cloud Build/Artifact Registry — Blaze
-plan required, approved in decision D1.)
-
-## 3. Wipe collections
-
-```bash
-for c in books trades conversations bookInterests bookRequests tradeHistory notifications ratings users; do
-  firebase firestore:delete "/$c" --recursive --force --project turtle-turning-pages
-done
-```
-
-Optionally also delete the Auth users (Console → Authentication → select all →
-delete) so testers re-onboard fully; otherwise existing accounts keep their
-uid and just go through neighborhood setup again (the fresh user doc is
-created with 0 pts and granted 200 on first sign-in).
-
-Keep `blogPosts` if you want existing journal content to survive; delete it
-too if starting the journal fresh.
-
-## 4. Console checklist before the build
-
-- [ ] Auth providers enabled (docs/SETUP_AUTH.md §1–4)
-- [ ] APNs key uploaded: Console → Project settings → Cloud Messaging →
-      Apple app configuration (needed for FCM push, decision D12)
-- [ ] Seed 2–3 `blogPosts` docs with `type: story|list|event` so the Journal
-      tab has content
-
-## 5. TestFlight release notes (suggested)
+## TestFlight release notes (suggested)
 
 > New season, new shell. The club moved to a points economy — every book is a
 > flat 50 pts and your first 200 are on us. Sign-in is now Apple, Google, or

@@ -1,15 +1,19 @@
 # Auth setup checklist (Phase C — one-time console work)
 
+> STATUS 2026-07-06: email-link ENABLED, Apple ENABLED, universal links +
+> AASA DEPLOYED, Firestore rules/indexes/functions DEPLOYED. Remaining:
+> §2 (Google provider + plist), §3 (Apple Developer portal), APNs key.
+> See docs/RESET.md for the full record.
+
 The app code for Apple / Google / email-link sign-in is complete. These
 console steps must be done by a project owner before the flows work on device.
 
 ## 1. Firebase console — enable providers
 Firebase console → Authentication → Sign-in method:
 
-- [ ] Enable **Apple**
+- [x] Enable **Apple** (done via API — client = bundle ID)
 - [ ] Enable **Google** (set the support email)
-- [ ] Enable **Email/Password → Email link (passwordless sign-in)** — enable
-      the *email link* toggle; the password toggle can stay off
+- [x] Email link (passwordless) enabled via API
 - [ ] (Cleanup, after testers migrate) Disable plain **Email/Password**
 
 ## 2. Google sign-in — iOS OAuth client
@@ -44,9 +48,8 @@ After enabling Google, Firebase creates an iOS OAuth client:
 The link lands on `https://turtle-turning-pages.web.app/finishSignIn` and must
 open the app via universal links:
 
-- [ ] Firebase console → Authentication → Settings → Authorized domains:
-      confirm `turtle-turning-pages.web.app` is listed
-- [ ] Host an `apple-app-site-association` file on Firebase Hosting at
+- [x] `turtle-turning-pages.web.app` is in the authorized domains
+- [x] Hosted and live: `apple-app-site-association` file on Firebase Hosting at
       `/.well-known/apple-app-site-association` (no extension, JSON):
 
 ```json
@@ -63,14 +66,13 @@ open the app via universal links:
 }
 ```
 
-  (replace `TEAMID` with the Apple team ID; deploy with `firebase deploy --only hosting`)
+  (deployed with team ID 4WXK55P8VB — verify at https://turtle-turning-pages.web.app/.well-known/apple-app-site-association)
 
 - [ ] The associated-domains entitlement (`applinks:turtle-turning-pages.web.app`)
       is already in `Runner.entitlements`
 
 ## 5. Firestore rules + indexes
-- [ ] `firebase deploy --only firestore` (from the repo root; first deploy of
-      the new rules/indexes — CLI validates rule syntax here)
+- [x] Deployed: rules + indexes + functions + hosting
 
 ## 6. Tester note for the next TestFlight build
 Password sign-in is gone. Existing testers sign in with the SAME EMAIL via
